@@ -5,3 +5,6 @@ __pycache__/
 .ruff_cache/
 .env
 .DS_Store
+.neon
+node_modules/
+.env.local

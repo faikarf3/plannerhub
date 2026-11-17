@@ -1,14 +1,41 @@
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", env_prefix="PLANNER_", extra="ignore")
+def _sqlalchemy_url(url: str) -> str:
+    """Accept plain Postgres URLs (as Neon and most hosts give them) and point
+    SQLAlchemy at the psycopg 3 driver."""
+    for prefix in ("postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix):]
+    return url
 
-    database_url: str = "postgresql+psycopg:///planner_hub"
+
+class Settings(BaseSettings):
+    # Repo-root .env.local (written by `neon init`), then backend/.env; real env vars win.
+    # PLANNER_DATABASE_URL in backend/.env keeps local dev on the local database even
+    # though .env.local holds Neon's DATABASE_URL. Deployed, only DATABASE_URL is set.
+    model_config = SettingsConfigDict(
+        env_file=("../.env.local", ".env"), env_prefix="PLANNER_", extra="ignore"
+    )
+
+    database_url: str = Field(
+        default="postgresql+psycopg:///planner_hub",
+        validation_alias=AliasChoices("PLANNER_DATABASE_URL", "DATABASE_URL"),
+    )
+    # Direct (non-pooled) connection for migrations; falls back to database_url.
+    # Deliberately not read from Neon's DATABASE_URL_UNPOOLED automatically, so a local
+    # `alembic upgrade` can never hit Neon by accident -- use scripts/with-neon.sh.
+    migration_database_url: str | None = None
     # Single-user bearer token until the Flutter app moves auth to Firebase.
     api_token: str
+
+    @field_validator("database_url", "migration_database_url")
+    @classmethod
+    def _driver(cls, v: str | None) -> str | None:
+        return _sqlalchemy_url(v) if v else v
 
 
 @lru_cache

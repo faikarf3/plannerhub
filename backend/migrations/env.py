@@ -15,7 +15,10 @@ target_metadata = Base.metadata
 
 def _url() -> str:
     # Tests pass their own URL via `config.attributes["url"]`.
-    return config.attributes.get("url") or get_settings().database_url
+    if url := config.attributes.get("url"):
+        return url
+    settings = get_settings()
+    return settings.migration_database_url or settings.database_url
 
 
 def run_migrations_offline() -> None:

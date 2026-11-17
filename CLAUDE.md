@@ -21,6 +21,8 @@ uv run alembic upgrade head                   # migrate dev DB
 uv run alembic revision --autogenerate -m "..."  # new migration; review the generated file
 ```
 
+Production DB is Neon (project `steep-surf-64403400`). `neon init` wrote its connection strings to the repo-root `.env.local` (gitignored; never print its values). Local dev stays on local Postgres because `PLANNER_DATABASE_URL` in `backend/.env` takes priority over Neon's `DATABASE_URL`. To act on Neon deliberately, prefix the command: `scripts/with-neon.sh uv run alembic upgrade head` (uses the direct, unpooled URL for migrations). Deployed, only `DATABASE_URL` is set.
+
 Tests run against real Postgres: each test is wrapped in an outer transaction that's rolled back, and the app's commits become savepoint releases (see `tests/conftest.py`). Auth is a single bearer token (`PLANNER_API_TOKEN`) on every route except `/health`; Firebase Auth replaces it when the app arrives.
 
 ## Backend layout
