@@ -116,6 +116,10 @@ class JournalEntry(Base):
     audio_url: Mapped[str | None] = mapped_column(Text)
     mood: Mapped[int | None] = mapped_column(Integer)
     energy: Mapped[int | None] = mapped_column(Integer)
+    # Set when extraction asked instead of guessing: {"question": str, "options": [str]}.
+    # Answered via POST /clarify/{id}; a follow-up question replaces it.
+    clarify_question: Mapped[dict[str, Any] | None]
+    clarify_answer: Mapped[str | None] = mapped_column(Text)
 
 
 class ActionLog(Base):

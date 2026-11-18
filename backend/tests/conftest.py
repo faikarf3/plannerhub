@@ -4,6 +4,9 @@ os.environ["PLANNER_DATABASE_URL"] = os.environ.get(
     "PLANNER_TEST_DATABASE_URL", "postgresql+psycopg:///planner_hub_test"
 )
 os.environ["PLANNER_API_TOKEN"] = "test-token"
+# Never call the real model from tests (backend/.env may hold a key); tests that
+# need extraction override get_extractor with a fake.
+os.environ["PLANNER_GEMINI_API_KEY"] = ""
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402

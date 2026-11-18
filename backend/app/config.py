@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     migration_database_url: str | None = None
     # Single-user bearer token until the Flutter app moves auth to Firebase.
     api_token: str
+    # Fallback extraction for text the quick-add parser can't read. Unset or empty
+    # turns it off: unparsed text is then only saved to the journal.
+    gemini_api_key: str | None = None
+    gemini_model: str = "gemini-3.5-flash-lite"
 
     @field_validator("database_url", "migration_database_url")
     @classmethod

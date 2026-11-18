@@ -41,12 +41,12 @@ One FastAPI service on Cloud Run sits between every input and Postgres; nothing 
 
 &#91;embedded content: planner hub architecture · 4 inputs, 1 action layer, 3 outputs\]
 
-Simple lines go straight from the quick-add parser to the action layer; anything it cannot read goes to Claude first. Every change is recorded in the action log, which is what makes undo work.
+Simple lines go straight from the quick-add parser to the action layer; anything it cannot read goes to Gemini first. Every change is recorded in the action log, which is what makes undo work.
 
 - **Client:** Flutter, one codebase for iOS (primary) and web (laptop).
 - **Backend:** FastAPI on Cloud Run; Cloud Scheduler for timed jobs; Firebase Auth and Cloud Messaging.
 - **Database:** Postgres (Cloud SQL or a managed equivalent).
-- **AI:** Gemini for audio transcription, Claude with tool use for extraction.
+- **AI:** Gemini for audio transcription and for extraction (tool use).
 
 ## Data model
 
@@ -76,13 +76,13 @@ Every input ends in the same action layer, so anything that can be said can also
 - Full forms per area for detail (application, climb, shift, task).
 - One-tap buttons on the home screen: start/stop timer, clock in/out of work.
 
-**Typed natural language** — the same box; anything the parser cannot read goes to Claude like a voice note. Useful on the subway.
+**Typed natural language** — the same box; anything the parser cannot read goes to Gemini like a voice note. Useful on the subway.
 
 **Voice**
 
 1. Tap the mic in the app, or run the "Log my day" iOS Shortcut.
 2. Audio uploads to `POST /voice`; it is transcribed, then saved as a `journal_entries` row.
-3. Claude receives the transcript plus context (now, open tasks, running timer, today's shifts, categories) and returns actions as tool calls.
+3. Gemini receives the transcript plus context (now, open tasks, running timer, today's shifts, categories) and returns actions as tool calls.
 4. The hub applies the actions and shows a confirmation card: one line per change, each with undo.
 5. Anything ambiguous comes back as a question on the card instead of a guess.
 
@@ -115,7 +115,7 @@ All time lives in `time_entries`; there are three ways to create one, and work s
 
 ## Actions and the voice prompt
 
-Claude never writes to the database; it returns tool calls, and the action layer validates and applies them. The same functions back the manual forms.
+The model never writes to the database; it returns tool calls, and the action layer validates and applies them. The same functions back the manual forms.
 
 | Tool | Parameters | Effect |
 | --- | --- | --- |
@@ -157,7 +157,7 @@ FastAPI, JSON in and out; app clients authenticate with Firebase Auth, pipelines
 | Method and path | Purpose |
 | --- | --- |
 | `POST /voice` | Upload audio; returns transcript, applied actions, clarify questions |
-| `POST /log` | Typed text; quick-add parser first, Claude as fallback; same response as /voice |
+| `POST /log` | Typed text; quick-add parser first, Gemini as fallback; same response as /voice |
 | `POST /actions/{id}/undo` | Reverse one action from `action_log` |
 | `POST /clarify/{journal_id}` | Answer a clarify question; applies the resulting actions |
 | `GET /today` | Tasks due, planned shifts, running timer, today's time entries |
@@ -186,7 +186,7 @@ Pipelines push into the hub; the hub only creates tasks for steps that need a pe
 
 **Gmail (later phase)**
 
-- A Cloud Scheduler job polls every 30 minutes for confirmation and reply emails; Claude classifies each as applied, OA, interview, rejection or other.
+- A Cloud Scheduler job polls every 30 minutes for confirmation and reply emails; Gemini classifies each as applied, OA, interview, rejection or other.
 - Matched replies update the application's status; OAs and interviews create tasks with the deadline from the email.
 
 **Google Calendar (later phase)**
@@ -211,7 +211,7 @@ The weekly report is the payoff: where every hour went, planned against actual, 
 - Work hours per job per day, with week and pay-period totals.
 - Area totals: applications sent, replies by type, SI sessions run, climbing sessions and hours, videos posted per platform.
 - Unconfirmed and uncategorized time, listed so it can be fixed.
-- A short written summary from Claude: what took the most time, what slipped, one pattern worth noticing.
+- A short written summary from Gemini: what took the most time, what slipped, one pattern worth noticing.
 
 **Notifications**
 
@@ -230,7 +230,7 @@ Push goes through Firebase Cloud Messaging; Cloud Scheduler triggers the timed j
 Phase 1 is usable on its own within about a week; each later phase adds to the same schema.
 
 1. **Core backend:** schema, action layer with undo, task and time-entry CRUD, timer and clock in/out, morning digest.
-2. **Logging:** `/log` quick-add parser, `/voice` with transcription and Claude tools, the "Log my day" iOS Shortcut.
+2. **Logging:** `/log` quick-add parser, `/voice` with transcription and Gemini tools, the "Log my day" iOS Shortcut.
 3. **Flutter app (iOS + web):** today view, mic button, timer and clock-in buttons, confirmation cards, offline queue.
 4. **Reports:** weekly and monthly hours, planned vs actual, timesheet view, evening check-in.
 5. **Pipelines:** `/events` wired to 3AM Facts and auto-apply; SI Sunday loop.

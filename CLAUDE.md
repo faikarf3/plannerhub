@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Planner Hub is a single-user, phone-first app for logging tasks, time and paid work shifts (by voice or typing) and rolling them up into weekly/monthly reports and a payroll timesheet. Product spec: [Planner_Hub_Spec_v1.md](Planner_Hub_Spec_v1.md).
 
-Phase 1 (core backend) is built in [backend/](backend/). No Flutter app, Claude/Gemini integration, or deployment yet.
+Phase 1 (core backend) is built in [backend/](backend/) and deployed. Phase 2 is in progress: the Gemini fallback for `/log` and `clarify` exist; `/voice`, `log_climb`, `log_application`, `set_mood` and the iOS Shortcut don't yet. No Flutter app.
 
 ## Commands
 
@@ -38,12 +38,13 @@ Tests run against real Postgres: each test is wrapped in an outer transaction th
 
 ## Backend layout
 
-- `app/actions/` — the action layer. `base.py` has the registry (`@action(name, ParamsModel)`), `apply_action` and `undo_action`. Handlers return `Outcome(summary, inverse, result)`; `inverse` is a list of `Step(action_type, payload)` replayed by undo (`None` = not undoable). Inverse-only actions (`restore_*`, `delete_category`) are registered with `internal=True` so they won't be exposed as Claude tools.
+- `app/actions/` — the action layer. `base.py` has the registry (`@action(name, ParamsModel)`), `apply_action` and `undo_action`. Handlers return `Outcome(summary, inverse, result)`; `inverse` is a list of `Step(action_type, payload)` replayed by undo (`None` = not undoable). Inverse-only actions (`restore_*`, `delete_category`) are registered with `internal=True` so they won't be exposed as AI tools.
 - Undo snapshots reuse the read models in `app/schemas.py` (`TaskOut`, `TimeEntryOut`): a delete stores the row's `*Out` dump as the payload of its `restore_*` inverse. Adding a column means adding it to the `*Out` model or undo will silently lose it.
 - Each action runs in a savepoint; a failed action leaves no partial writes and no `action_log` row. `ActionError(message, status)` maps directly to the HTTP response.
 - `app/routers/` are thin: reads query the DB directly, writes always go through `routers/common.run()` → `apply_action`.
 - `app/queries.py` builds `/today` and `/digest/morning` (read-only).
-- `POST /log`: `app/actions/journal.py` saves the raw text as a `journal_entries` row, runs the pure parser in `app/quickadd.py` (grammar in its docstring; tested in `tests/test_quickadd.py` with a fixed reference time), then applies each intent via `apply_action` with `journal_entry_id`. Unparsed text returns `parsed=false` and stays in the journal; that's the hook for the Phase 2 Claude fallback. Activity words live in `config.ACTIVITIES`; category names match automatically.
+- `POST /log`: `app/actions/journal.py` saves the raw text as a `journal_entries` row, runs the pure parser in `app/quickadd.py` (grammar in its docstring; tested in `tests/test_quickadd.py` with a fixed reference time), then applies each intent via `apply_action` with `journal_entry_id`. Activity words live in `config.ACTIVITIES`; category names match automatically.
+- AI fallback: text the parser can't read goes to `app/extract.py` (only when `PLANNER_GEMINI_API_KEY` is set; model from `PLANNER_GEMINI_MODEL`). Tools are hand-written in `extract.TOOLS` (a test checks each field exists on the action's params model); `to_extraction` filters undeclared fields and nulls and repairs known model slips. A `clarify` call applies nothing, is stored on the journal entry, and `POST /clarify/{journal_id}` re-runs extraction with the answer. Provider code lives only in `GeminiExtractor`. Tests never call Gemini: `conftest.py` blanks the key and `tests/test_extract.py` overrides `get_extractor` with a fake. Extraction failures (quota, 503) return `error` and keep the journal entry.
 - `app/config.py` `JOBS` maps each work job to the category clock-in uses by default.
 - Datetimes: input fields use `AwareDatetime` from `app/timeutil.py` (naive = New York local, converted to UTC); output models serialize in UTC.
 
@@ -53,17 +54,17 @@ Tests run against real Postgres: each test is wrapped in an outer transaction th
 - **DB:** Postgres. Store all timestamps in UTC; display in `America/New_York`.
 - **Client:** Flutter, one codebase for iOS (primary) and web (laptop). No native Android.
 - **Auth/push:** Firebase Auth for app clients, per-source API keys for pipelines, Firebase Cloud Messaging for push.
-- **AI:** Gemini for audio transcription; Claude with tool use for extracting actions from transcripts/typed text.
+- **AI:** Gemini for audio transcription and for extracting actions from transcripts/typed text (tool use).
 
 ## Architecture invariants
 
 These cut across the whole system and must hold in every feature:
 
-- **Only the action layer writes to Postgres.** Voice, typed text, manual forms, and pipeline webhooks all funnel into the same set of action functions (`create_task`, `complete_task`, `update_task`, `log_time`, `start_timer`/`stop_timer`, `log_climb`, `log_application`, `set_mood`, `clarify`). Manual forms and Claude tool calls share these functions.
-- **Claude never writes to the DB.** It returns tool calls; the action layer validates and applies them. `clarify` applies nothing and surfaces a question on the confirmation card. Claude must not invent times/durations — missing info → `clarify`.
+- **Only the action layer writes to Postgres.** Voice, typed text, manual forms, and pipeline webhooks all funnel into the same set of action functions (`create_task`, `complete_task`, `update_task`, `log_time`, `start_timer`/`stop_timer`, `log_climb`, `log_application`, `set_mood`, `clarify`). Manual forms and AI tool calls share these functions.
+- **The model never writes to the DB.** It returns tool calls; the action layer validates and applies them. `clarify` applies nothing and surfaces a question on the confirmation card. The model must not invent times/durations — missing info → `clarify`.
 - **Every change goes in `action_log` with an `inverse`.** This is what powers per-action undo (`POST /actions/{id}/undo`). Any new action type needs an inverse.
 - **Raw input is always kept.** Every voice/typed log creates a `journal_entries` row with the raw transcript, even if extraction yields nothing.
-- **`/log` flow:** deterministic quick-add parser first (e.g. `climb 2h vital`, `SI prep 45m`, `tutoring 3-6pm`, `task follow up Traveloka fri`); only unparseable input falls through to Claude. `/voice` and `/log` return the same response shape.
+- **`/log` flow:** deterministic quick-add parser first (e.g. `climb 2h vital`, `SI prep 45m`, `tutoring 3-6pm`, `task follow up Traveloka fri`); only unparseable input falls through to Gemini. `/voice` and `/log` return the same response shape.
 - **Categories are data, not code.** New areas are rows in `categories` (with `parent_id`, `is_work`, `weekly_target_hours`); don't hardcode category lists.
 - **One timeline for all time.** Work shifts are ordinary `time_entries` in an `is_work` category with a `job` field (tutoring, SI sessions, SI prep, restaurant). SI prep counts as paid work.
 - **Pipelines push, hub reacts.** External pipelines (3AM Facts, job auto-apply) post to `POST /events` (raw inbox in `events` table); the hub creates tasks only for steps needing a human.
@@ -80,7 +81,7 @@ These cut across the whole system and must hold in every feature:
 ## Build order (from spec roadmap)
 
 1. Core backend: schema, action layer with undo, task/time-entry CRUD, timer + clock in/out, morning digest.
-2. Logging: `/log` quick-add parser, `/voice` with transcription + Claude tools, iOS Shortcut.
+2. Logging: `/log` quick-add parser, `/voice` with transcription + Gemini tools, iOS Shortcut.
 3. Flutter app: today view, mic, timer/clock-in buttons, confirmation cards, offline queue.
 4. Reports: weekly/monthly hours, planned vs actual, timesheet, evening check-in.
 5. Pipelines: `/events` for 3AM Facts and auto-apply; SI Sunday loop.
