@@ -23,12 +23,12 @@ uv run alembic revision --autogenerate -m "..."  # new migration; review the gen
 
 Production DB is Neon (project `steep-surf-64403400`). `neon init` wrote its connection strings to the repo-root `.env.local` (gitignored; never print its values). Local dev stays on local Postgres because `PLANNER_DATABASE_URL` in `backend/.env` takes priority over Neon's `DATABASE_URL`. To act on Neon deliberately, prefix the command: `scripts/with-neon.sh uv run alembic upgrade head` (uses the direct, unpooled URL for migrations). Deployed, only `DATABASE_URL` is set.
 
-Deployed on Cloud Run: service `planner-api`, project `planner-hub-97a70d`, region `us-east4`, URL https://planner-api-885606868208.us-east4.run.app. Runs as service account `planner-api@planner-hub-97a70d.iam.gserviceaccount.com`, with secrets `planner-database-url` (Neon pooled URL) and `planner-api-token` from Secret Manager. Migrations are not run on boot; run them with `scripts/with-neon.sh` before deploying a schema change. Redeploy from the repo root:
+Deployed on Cloud Run: service `planner-api`, project `planner-hub-97a70d`, region `us-east4`, URL https://planner-api-885606868208.us-east4.run.app. Runs as service account `planner-api@planner-hub-97a70d.iam.gserviceaccount.com`, with secrets `planner-database-url` (Neon pooled URL), `planner-api-token` and `planner-gemini-api-key` from Secret Manager. Migrations are not run on boot; run them with `scripts/with-neon.sh` before deploying a schema change. Redeploy from the repo root:
 
 ```bash
 gcloud run deploy planner-api --project planner-hub-97a70d --source backend --region us-east4 \
   --service-account planner-api@planner-hub-97a70d.iam.gserviceaccount.com \
-  --set-secrets DATABASE_URL=planner-database-url:latest,PLANNER_API_TOKEN=planner-api-token:latest \
+  --set-secrets DATABASE_URL=planner-database-url:latest,PLANNER_API_TOKEN=planner-api-token:latest,PLANNER_GEMINI_API_KEY=planner-gemini-api-key:latest \
   --allow-unauthenticated --min-instances 0 --max-instances 2 --memory 512Mi
 ```
 
