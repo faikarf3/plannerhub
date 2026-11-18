@@ -58,6 +58,9 @@ class StartTimer(BaseModel):
 class StopTimer(BaseModel):
     at: AwareDatetime | None = None
     require_work: bool = False  # clock-out only stops a work timer
+    # "stop climbing": refuse rather than stop a different timer.
+    category: str | None = None
+    job: str | None = None
 
 
 class EntryRef(BaseModel):
@@ -282,6 +285,13 @@ def stop_timer(ctx: ActionContext, p: StopTimer) -> Outcome:
         raise ActionError("no timer is running", 409)
     if p.require_work and not ctx.session.get(Category, current.category_id).is_work:
         raise ActionError("not clocked in (the running timer is not work)", 409)
+    if p.category is not None or p.job is not None:
+        running_cat = ctx.session.get(Category, current.category_id)
+        expected = resolve_category(ctx.session, p.category, None) if p.category else running_cat
+        if expected.id != running_cat.id or (p.job and p.job != current.job):
+            running = current.job or running_cat.name
+            wanted = p.job or expected.name
+            raise ActionError(f"the running timer is {running}, not {wanted}", 409)
     entry_id = current.id
     summary, inverse = _close(ctx, current, p.at or ctx.now)
     entry = ctx.session.get(TimeEntry, entry_id)

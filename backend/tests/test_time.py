@@ -145,3 +145,14 @@ def test_db_enforces_one_running_timer(session):
     with pytest.raises(IntegrityError):
         session.flush()
     session.rollback()
+
+
+def test_stop_named_activity_must_match_running_timer(client):
+    client.post("/timer/start", json={"category": "Work", "job": "tutoring",
+                                      "at": "2026-11-17T15:00:00"})
+    r = client.post("/log", json={"text": "stop climbing"}).json()
+    assert r["error"] == "the running timer is tutoring, not Climbing"
+    r = client.post("/log", json={"text": "stop si session"}).json()
+    assert r["error"] == "the running timer is tutoring, not si_session"
+    r = client.post("/log", json={"text": "stop tutoring", "at": "2026-11-17T18:00:00"}).json()
+    assert r["actions"][0]["result"]["time_entry"]["duration_min"] == 180

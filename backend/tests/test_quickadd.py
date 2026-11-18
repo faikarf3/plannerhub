@@ -154,3 +154,17 @@ def test_done_task_vs_done_log():
 ])
 def test_not_understood(text):
     assert parse(text, NOW, CATS) is None
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("stop climbing", {"category": "Climbing"}),
+    ("stopped climbing", {"category": "Climbing"}),
+    ("done climbing", {"category": "Climbing"}),
+    ("finished with SI prep", {"category": "SI Prep", "job": "si_prep"}),
+    ("stop the climbing timer", {"category": "Climbing"}),
+    ("stop tutoring at 6", {"category": "Work", "job": "tutoring", "at": ny(17, 18)}),
+    ("stop the timer", {}),
+    ("stop timer", {}),
+])
+def test_stop_with_activity(text, expected):
+    assert one(text) == ("stop_timer", expected)

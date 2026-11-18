@@ -9,6 +9,7 @@ Grammar (case-insensitive):
   done <task title words>                 -> complete the one open task matching
   start <activity> [at 2pm]               -> start_timer
   stop | done | end [at 5pm]              -> stop_timer
+  stop|done|finished [with] <activity> [timer] [at 5pm] -> stop_timer, only if that's what's running
   clock in [for] <job> [at 3pm] / clock out [at 6pm]
   <activity> <duration|range> [yesterday] [note...]
       durations: 2h, 1.5h, 2h30m, 45m, 90 min; prefix ~/about/around = estimate
@@ -200,7 +201,11 @@ def _hashtag_category(text: str, vocab) -> tuple[str, str | None]:
 
 _TASK = re.compile(r"^(?:task|todo|add)\s+(?P<rest>.+)$")
 _DONE_TASK = re.compile(r"^(?:done|finished|did|completed?)\s+(?P<rest>.+)$")
-_STOP = re.compile(r"^(?:stop|stopped|done|end|ended|finished|stop timer)$")
+_STOP_WORD = r"(?:stop|stopped|stopping|done|end|ended|finish|finished)"
+_STOP = re.compile(rf"^{_STOP_WORD}(?:\s+(?:the\s+)?timer)?$")
+_STOP_ACTIVITY = re.compile(
+    rf"^{_STOP_WORD}(?:\s+with)?(?:\s+the)?\s+(?P<rest>.+?)(?:\s+timer)?$"
+)
 _START = re.compile(r"^(?:start|starting|started|begin)\s+(?:the\s+)?(?P<rest>.+)$")
 _CLOCK_IN = re.compile(r"^(?:clock(?:ing|ed)?\s+in|clock-in)(?:\s+(?:for|to|at))?\s*(?P<rest>.*)$")
 _CLOCK_OUT = re.compile(r"^(?:clock(?:ing|ed)?\s+out|clock-out|off work|done with work)$")
@@ -244,6 +249,12 @@ def _parse(text, original, local_now, today, vocab) -> list[Intent] | None:
         return [Intent("start_timer", _with_at(_activity_payload(act), at))]
     if _STOP.match(body):
         return [Intent("stop_timer", _with_at({}, at))]
+    if m := _STOP_ACTIVITY.match(body):
+        # "stop climbing": only a bare activity counts; "done SI slides" (a task) and
+        # "done climbing 2h" (a time log) fall through to the rules below.
+        act, leftover = _match_activity(m["rest"], vocab)
+        if act is not None and not leftover:
+            return [Intent("stop_timer", _with_at(_activity_payload(act), at))]
     if m := _START.match(body):
         act, leftover = _match_activity(m["rest"], vocab)
         if act is None:
