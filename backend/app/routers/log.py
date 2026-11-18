@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
@@ -10,6 +11,7 @@ from app.schemas import ActionOut
 from app.timeutil import AwareDatetime
 
 router = APIRouter(tags=["log"])
+logger = logging.getLogger("planner.log")
 
 ExtractorDep = Annotated[Extractor | None, Depends(get_extractor)]
 
@@ -45,6 +47,18 @@ class LogOut(BaseModel):
     message: str
 
 
+def _log_outcome(endpoint: str, result: LogResult) -> None:
+    """One line per request for Cloud Logging. The user's text is deliberately
+    left out (it's personal); journal_entry_id points at it."""
+    level = logging.WARNING if result.error else logging.INFO
+    logger.log(
+        level, "%s journal=%s via=%s parsed=%s actions=%s clarify=%s error=%s",
+        endpoint, result.journal_entry_id, result.via, result.parsed,
+        ",".join(f"{a.action_type}#{a.action_id}" for a in result.actions) or "-",
+        "yes" if result.clarify else "no", result.error or "-",
+    )
+
+
 def _out(result: LogResult) -> LogOut:
     actions = [ActionOut(**vars(a)) for a in result.actions]
     if result.error and not actions:
@@ -66,9 +80,13 @@ def _out(result: LogResult) -> LogOut:
 
 @router.post("/log")
 def log(body: LogBody, ctx: CtxDep, extractor: ExtractorDep) -> LogOut:
-    return _out(handle_log(ctx, body.text, body.at, extractor))
+    result = handle_log(ctx, body.text, body.at, extractor)
+    _log_outcome("log", result)
+    return _out(result)
 
 
 @router.post("/clarify/{journal_id}")
 def clarify(journal_id: int, body: ClarifyBody, ctx: CtxDep, extractor: ExtractorDep) -> LogOut:
-    return _out(handle_clarify(ctx, journal_id, body.answer, extractor))
+    result = handle_clarify(ctx, journal_id, body.answer, extractor)
+    _log_outcome("clarify", result)
+    return _out(result)

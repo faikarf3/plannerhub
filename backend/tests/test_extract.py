@@ -89,11 +89,13 @@ def test_normalize_job_category_and_redundant_duration():
         ("log_time", {"job": "tutoring", "started_at": "2026-11-17T09:00:00",
                       "ended_at": "2026-11-17T10:00:00", "duration_min": 60}),
         ("start_timer", {"job": "si_prep"}),
+        ("log_time", {"category": "SI Prep (work)", "duration_min": 45}),
     ])
     assert ex.calls[0].args == {"job": "tutoring", "category": "Work",
                                 "started_at": "2026-11-17T09:00:00",
                                 "ended_at": "2026-11-17T10:00:00"}
     assert ex.calls[1].args == {"job": "si_prep", "category": "SI Prep"}
+    assert ex.calls[2].args["category"] == "SI Prep"
 
 
 def test_prompt_has_context(client, session):
@@ -194,3 +196,90 @@ def test_fallback_off_without_key(client):
 
 def test_extraction_type_default():
     assert Extraction().calls == [] and Extraction().clarify is None
+
+
+# --- set_mood and request logging ---------------------------------------------
+
+def test_ai_set_mood_on_this_entry_and_undo(client, session, fake):
+    fake([("set_mood", {"mood": 2, "energy": 1, "journal_entry_id": 999})])
+    out = _log(client, "rough day, pretty exhausted")
+    jid = out["journal_entry_id"]
+    assert out["actions"][0]["summary"] == "Noted mood 2/5, energy 1/5"
+    entry = session.get(JournalEntry, jid)
+    assert (entry.mood, entry.energy) == (2, 1)  # injected id wins over the model's
+
+    assert client.post(f"/actions/{out['actions'][0]['action_id']}/undo").status_code == 200
+    session.refresh(entry)
+    assert (entry.mood, entry.energy) == (None, None)
+
+
+def test_set_mood_validation(client, fake):
+    fake([("set_mood", {"mood": 9})])
+    out = _log(client, "feeling incredible")
+    assert out["actions"] == [] and "invalid set_mood" in out["error"]
+    fake([("set_mood", {})])
+    out = _log(client, "meh")
+    assert "needs mood or energy" in out["error"]
+
+
+def test_request_log_line_has_no_user_text(client, fake, caplog):
+    fake([("create_task", {"title": "Buy chalk"})])
+    with caplog.at_level("INFO", logger="planner.log"):
+        out = _log(client, "secret diary words, buy chalk")
+    line = caplog.records[-1].getMessage()
+    assert f"log journal={out['journal_entry_id']} via=ai parsed=True" in line
+    assert "create_task#" in line and "secret" not in line and "chalk" not in line
+
+
+# --- invented-time guard ------------------------------------------------------
+
+def _guard(name, args, text, said="2026-11-17T20:10:30"):
+    from app.extract import ToolCall, find_invented_time
+    return find_invented_time(ToolCall(name, args), text, to_utc(
+        __import__("datetime").datetime.fromisoformat(said)))
+
+
+@pytest.mark.parametrize(("name", "args", "text", "bad"), [
+    # the observed failure: start made up for "until 5"
+    ("log_time", {"started_at": "2026-11-17T14:09:00", "ended_at": "2026-11-17T17:00:00"},
+     "climbed until 5, felt amazing", "started_at"),
+    ("log_time", {"started_at": "2026-11-17T14:00:00", "ended_at": "2026-11-17T16:00:00"},
+     "went climbing from 2 to 4", None),
+    ("log_time", {"started_at": "2026-11-17T09:00:00", "ended_at": "2026-11-17T12:00:00"},
+     "tutored this morning", "started_at"),
+    ("log_time", {"started_at": "2026-11-17T15:00:00", "ended_at": "2026-11-17T18:00:00"},
+     "tutoring three to six", None),
+    ("log_time", {"started_at": "2026-11-17T12:00:00", "ended_at": "2026-11-17T13:30:00"},
+     "lunch study from noon till 1:30", None),
+    # duration only, or ending at the moment it was said
+    ("log_time", {"duration_min": 120}, "did 2 hours of homework", None),
+    ("log_time", {"ended_at": "2026-11-17T20:10:00", "duration_min": 45},
+     "just finished 45 min of SI prep", None),
+    ("log_time", {"started_at": "2026-11-17T19:25:00", "ended_at": "2026-11-17T20:10:00",
+                  "duration_min": 45}, "just finished 45 min of SI prep", None),
+    # what the model actually sends for these: both ends, no duration field
+    ("log_time", {"started_at": "2026-11-17T18:10:00", "ended_at": "2026-11-17T20:10:00"},
+     "kind of stressed but did 2 hours of homework", None),
+    ("log_time", {"started_at": "2026-11-17T19:25:00", "ended_at": "2026-11-17T20:10:00"},
+     "just finished 45 minutes of SI prep", None),
+    ("log_time", {"started_at": "2026-11-17T19:10:00", "ended_at": "2026-11-17T20:10:00"},
+     "an hour of applications", None),
+    ("log_time", {"started_at": "2026-11-17T18:10:00", "ended_at": "2026-11-17T20:10:00"},
+     "did 3 hours of homework", "started_at"),  # duration doesn't match what was said
+    ("stop_timer", {"at": "2026-11-17T17:00:00"}, "done climbing at 5", None),
+    ("stop_timer", {"at": "2026-11-17T17:00:00"}, "done climbing", "at"),
+    ("create_task", {"title": "x", "due_at": "2026-11-19T23:59:00"}, "x by thursday", None),
+])
+def test_invented_time_guard(name, args, text, bad):
+    assert _guard(name, args, text) == bad
+
+
+def test_invented_time_becomes_question_then_answer_backs_it(client, fake):
+    fake([("log_time", {"category": "Climbing", "started_at": "2026-11-17T14:09:00",
+                        "ended_at": "2026-11-17T17:00:00"})],
+         [("log_time", {"category": "Climbing", "started_at": "2026-11-17T14:30:00",
+                        "ended_at": "2026-11-17T17:00:00"})])
+    out = _log(client, "climbed until 5", at="2026-11-17T20:10:00")
+    assert out["actions"] == [] and out["message"] == "What time did you start climbing?"
+    r = client.post(f"/clarify/{out['journal_entry_id']}", json={"answer": "2:30"})
+    assert r.json()["actions"][0]["result"]["time_entry"]["duration_min"] == 150

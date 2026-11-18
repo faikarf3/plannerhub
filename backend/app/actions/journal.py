@@ -13,7 +13,16 @@ from typing import Literal
 from sqlalchemy import select
 
 from app.actions.base import ActionContext, ActionError, AppliedAction, apply_action
-from app.extract import SYSTEM_PROMPT, TOOLS, ExtractionError, Extractor, build_prompt
+from app.extract import (
+    SYSTEM_PROMPT,
+    TOOLS,
+    Extraction,
+    ExtractionError,
+    Extractor,
+    build_prompt,
+    find_invented_time,
+    invented_time_question,
+)
 from app.models import Category, JournalEntry, Task
 from app.quickadd import Intent, parse
 
@@ -125,6 +134,13 @@ def _extract_and_apply(
     except ExtractionError as e:
         return LogResult(journal.id, parsed=False, error=f"AI unavailable: {e}")
 
+    # Everything the user has said so far backs times: the log plus any answer.
+    said = journal.raw_text + (f" {followup[1]}" if followup else "")
+    for call in extraction.calls:
+        if field_name := find_invented_time(call, said, said_at):
+            extraction = Extraction(clarify=invented_time_question(call, field_name))
+            break
+
     if extraction.clarify:
         q = extraction.clarify
         journal.clarify_question = {"question": q.question, "options": q.options}
@@ -140,6 +156,8 @@ def _extract_and_apply(
             args = dict(call.args)
             if call.name in _TIMED and "at" not in args:
                 args["at"] = said_at
+            if call.name == "set_mood":
+                args["journal_entry_id"] = journal.id  # mood belongs to what was said
             result.actions.append(
                 apply_action(ctx, call.name, args, journal_entry_id=journal.id)
             )

@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -5,6 +7,10 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from app.actions import ActionError
 from app.deps import require_token
 from app.routers import log, misc, tasks, time
+
+# App loggers ("planner.*") to stdout, which Cloud Run sends to Cloud Logging.
+# Uvicorn configures its own loggers and doesn't propagate, so no duplicates.
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 app = FastAPI(title="Planner Hub")
 
