@@ -8,7 +8,7 @@ provider; swapping models means writing another class with the same `extract`.
 
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache
 from typing import Any, Protocol
 
@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.config import JOBS, get_settings
 from app.models import Category, Task, TimeEntry
-from app.timeutil import LOCAL_TZ, local_day_bounds, local_today
+from app.timeutil import LOCAL_TZ
 
 SYSTEM_PROMPT = """\
 You turn the user's spoken or typed log into planner actions by calling tools.
@@ -27,11 +27,16 @@ Rules:
   create_task is only for things still to do ("need to", "remind me", "have to", "by friday").
 - Match mentions to open_tasks by meaning before creating a new task; use its id. Something
   the user says they did that matches an open task -> complete_task.
-- Resolve relative times ("this morning", "from 2 to 4", "friday") against now.
+- Resolve relative times ("this morning", "from 2 to 4", "friday") against now. A clock
+  time without am/pm: 8-11 is morning, 12 and 1-7 are afternoon/evening. Something already
+  done can't end after now: if that reading lands in the future, it was the day before.
 - Give every time as local New York time in ISO 8601 without an offset, e.g. 2026-11-17T14:00:00.
 - Never invent a time or duration that was not said. If one is needed and missing, call clarify.
 - A vague amount ("about an hour", "a couple hours", "like an hour") is fine: use it and set
   confirmed=false. A plain amount ("2 hours", "45 min") is confirmed.
+- Climbing that already happened is log_climb, not log_climb plus log_time. Set gym only if
+  a place was named. To add a gym or notes to a climbing entry already in recent_entries or
+  the running timer, call log_climb with its time_entry_id and no times.
 - "Clocking in/out", "off work" and named jobs are work time; set job to one of the listed jobs.
 - Use only category names from the list. If none fits, leave category out.
 - One statement can produce several actions; return all of them.
@@ -43,8 +48,10 @@ Rules:
 
 A time entry needs both ends, or a duration. "now" counts only when the user means
 the present ("just finished", "until now"). Examples, with now = 17:30:
-- "climbed from 2 to 4" -> log_time 14:00-16:00
+- "climbed from 2 to 4 at Vital" -> log_climb 14:00-16:00, gym=Vital
 - "an hour of applications" -> log_time duration_min=60, confirmed=false
+- "that climb was at Vital, sent my first V5" (entry #12 is Climbing) -> log_climb
+  time_entry_id=12, gym=Vital, notes="sent my first V5"
 - "climbed until 5" -> clarify "When did you start climbing?" (start was not said)
 - "tutored this morning" -> clarify "What time did tutoring start and end?"
 - "just finished 45 min of SI prep" -> log_time duration_min=45, ending now
@@ -123,6 +130,30 @@ TOOLS: list[dict[str, Any]] = [
                 "task_id": _TASK_ID,
                 "job": _JOB,
                 "note": {"type": "string"},
+                "confirmed": {
+                    "type": "boolean",
+                    "description": "false when the duration was vague",
+                },
+            },
+        },
+    },
+    {
+        "name": "log_climb",
+        "description": (
+            "Record a climbing session already done (times as in log_time), or add gym/notes "
+            "to an existing climbing entry by time_entry_id (then give no times)."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "time_entry_id": {"type": "integer",
+                                  "description": "#id of a Climbing entry in recent_entries "
+                                                 "or the running timer"},
+                "gym": {"type": "string", "description": "Only if a place was named"},
+                "notes": {"type": "string"},
+                "started_at": _TIME,
+                "ended_at": _TIME,
+                "duration_min": {"type": "integer"},
                 "confirmed": {
                     "type": "boolean",
                     "description": "false when the duration was vague",
@@ -245,7 +276,10 @@ def _normalize(name: str, args: dict[str, Any]) -> dict[str, Any]:
         args["category"] = re.sub(r"\s*\((?:work|paid)\)$", "", args["category"]).strip()
     if name in ("log_time", "start_timer") and args.get("job") in JOBS and "category" not in args:
         args["category"] = JOBS[args["job"]]  # same default clock-in uses
-    if name == "log_time" and "started_at" in args and "ended_at" in args:
+    if name == "log_climb" and "time_entry_id" in args:
+        for key in ("started_at", "ended_at", "duration_min", "confirmed"):
+            args.pop(key, None)  # the entry already has its times
+    if name in ("log_time", "log_climb") and "started_at" in args and "ended_at" in args:
         args.pop("duration_min", None)  # redundant; the action refuses both
     return args
 
@@ -255,10 +289,12 @@ _NUMBER_WORDS = {
     "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "noon": 12, "midnight": 12,
 }
 _TIME_FIELDS = {
-    "log_time": ("started_at", "ended_at"), "start_timer": ("at",), "stop_timer": ("at",),
+    "log_time": ("started_at", "ended_at"), "log_climb": ("started_at", "ended_at"),
+    "start_timer": ("at",), "stop_timer": ("at",),
 }
 _FIELD_VERBS = {
     ("log_time", "started_at"): "start", ("log_time", "ended_at"): "finish",
+    ("log_climb", "started_at"): "start", ("log_climb", "ended_at"): "finish",
     ("start_timer", "at"): "start", ("stop_timer", "at"): "stop",
 }
 
@@ -322,7 +358,8 @@ def find_invented_time(call: ToolCall, text: str, said_at: datetime) -> str | No
 
 
 def invented_time_question(call: ToolCall, field_name: str) -> Clarify:
-    what = call.args.get("job") or call.args.get("category") or "that"
+    default = "climbing" if call.name == "log_climb" else "that"
+    what = call.args.get("job") or call.args.get("category") or default
     what = str(what).replace("_", " ").lower()
     return Clarify(f"What time did you {_FIELD_VERBS[(call.name, field_name)]} {what}?")
 
@@ -335,7 +372,7 @@ def build_prompt(
     session: Session, now: datetime, text: str, followup: tuple[str, str] | None = None
 ) -> str:
     """Context the model needs to resolve the text: time, categories, open tasks,
-    the running timer and today's entries. `now` is when the text was recorded."""
+    the running timer and the last day's entries. `now` is when the text was recorded."""
     cats = {c.id: c for c in session.scalars(select(Category).order_by(Category.name))}
     lines = [f"now: {_local(now)} (America/New_York)"]
     lines.append("categories: " + ", ".join(c.name for c in cats.values()))
@@ -356,20 +393,21 @@ def build_prompt(
     if running:
         job = f" ({running.job})" if running.job else ""
         since = _local(running.started_at)
-        lines.append(f"running_timer: {cats[running.category_id].name}{job} since {since}")
+        lines.append(f"running_timer: #{running.id} {cats[running.category_id].name}{job} "
+                     f"since {since}")
     else:
         lines.append("running_timer: none")
 
-    start, end = local_day_bounds(local_today(now))
+    # The last 24h, not "today": late-night logs refer back across midnight.
     entries = session.scalars(
-        select(TimeEntry).where(TimeEntry.started_at >= start, TimeEntry.started_at < end,
-                                TimeEntry.ended_at.is_not(None))
+        select(TimeEntry).where(TimeEntry.started_at >= now - timedelta(hours=24),
+                                TimeEntry.started_at <= now, TimeEntry.ended_at.is_not(None))
         .order_by(TimeEntry.started_at)
     )
-    lines.append("today_entries:")
+    lines.append("recent_entries (last 24h):")
     for e in entries:
         job = f" ({e.job})" if e.job else ""
-        lines.append(f"- {cats[e.category_id].name}{job} {_local(e.started_at)}-"
+        lines.append(f"- #{e.id} {cats[e.category_id].name}{job} {_local(e.started_at)}-"
                      f"{e.ended_at.astimezone(LOCAL_TZ):%H:%M}")
 
     lines += ["", "log:", text]

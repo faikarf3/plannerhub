@@ -1,5 +1,7 @@
 """AI fallback for /log and the clarify round-trip, with a fake extractor."""
 
+import re
+
 import pytest
 
 from app.actions import REGISTRY
@@ -105,7 +107,7 @@ def test_prompt_has_context(client, session):
                           "did the thing")
     assert "now: Tue 2026-11-17 14:00" in prompt
     assert "Follow up Traveloka [Job Search]" in prompt
-    assert "running_timer: Climbing" in prompt
+    assert re.search(r"running_timer: #\d+ Climbing since", prompt)
     assert prompt.endswith("log:\ndid the thing")
 
 

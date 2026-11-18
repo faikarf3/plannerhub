@@ -49,6 +49,13 @@ class TimeEntryOut(_Orm):
     note: str | None
 
 
+class ClimbOut(_Orm):
+    id: int
+    time_entry_id: int
+    gym: str | None
+    notes: str | None
+
+
 class ActionOut(BaseModel):
     """One line on a confirmation card."""
 

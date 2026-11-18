@@ -25,11 +25,11 @@ def one(text):
 # ------------------------------------------------------------ time logs
 
 @pytest.mark.parametrize("text, expected", [
-    ("climb 2h vital", {"category": "Climbing", "duration_min": 120, "ended_at": NOW,
-                        "note": "vital"}),
+    ("homework 2h calc", {"category": "School", "duration_min": 120, "ended_at": NOW,
+                          "note": "calc"}),
     ("SI prep 45m", {"category": "SI Prep", "job": "si_prep", "duration_min": 45,
                      "ended_at": NOW}),
-    ("climbing 1.5h", {"category": "Climbing", "duration_min": 90, "ended_at": NOW}),
+    ("studying 1.5h", {"category": "School", "duration_min": 90, "ended_at": NOW}),
     ("school 2h30m midterm review", {"category": "School", "duration_min": 150,
                                      "ended_at": NOW, "note": "midterm review"}),
     ("job search 90 min", {"category": "Job Search", "duration_min": 90, "ended_at": NOW}),
@@ -63,9 +63,9 @@ def test_restaurant_overnight():
 
 
 def test_range_yesterday_with_note():
-    _, p = one("climbed 2-4 yesterday at Vital")
+    _, p = one("tutored 2-4 yesterday at the library")
     assert (p["started_at"], p["ended_at"]) == (ny(16, 14), ny(16, 16))
-    assert p["note"] == "at Vital"
+    assert p["note"] == "at the library"
     assert "confirmed" not in p
 
 
@@ -84,8 +84,43 @@ def test_duration_yesterday_is_estimate():
 
 
 def test_note_keeps_original_case():
-    _, p = one("climb 2h Brooklyn Boulders")
-    assert p["note"] == "Brooklyn Boulders"
+    _, p = one("homework 2h PH201 Problem Set")
+    assert p["note"] == "PH201 Problem Set"
+
+
+# ------------------------------------------------------------ climbing
+
+@pytest.mark.parametrize("text, expected", [
+    ("climb 2h vital", {"duration_min": 120, "ended_at": NOW, "gym": "vital"}),
+    ("climbing 1.5h", {"duration_min": 90, "ended_at": NOW}),
+    ("climb 2h Brooklyn Boulders", {"duration_min": 120, "ended_at": NOW,
+                                    "gym": "Brooklyn Boulders"}),
+    ("climbed 2-4 at Vital, worked the overhang",
+     {"started_at": ny(17, 14), "ended_at": ny(17, 16), "gym": "Vital",
+      "notes": "worked the overhang"}),
+    ("bouldering 1h @ vital - sent a v5", {"duration_min": 60, "ended_at": NOW,
+                                          "gym": "vital", "notes": "sent a v5"}),
+    ("climb 1h, felt strong", {"duration_min": 60, "ended_at": NOW, "notes": "felt strong"}),
+    ("climbing 90 min with sam", {"duration_min": 90, "ended_at": NOW, "notes": "with sam"}),
+    ("about 2h climbing", None),  # activity must come first; left to the AI
+])
+def test_climbs(text, expected):
+    if expected is None:
+        assert parse(text, NOW, CATS) is None
+    else:
+        assert one(text) == ("log_climb", expected)
+
+
+def test_climb_yesterday_and_estimate():
+    kind, p = one("climbed 2h yesterday at vital")
+    assert kind == "log_climb" and p["confirmed"] is False and p["gym"] == "vital"
+    _, p = one("climbing about 2h")
+    assert p["confirmed"] is False and "gym" not in p
+
+
+def test_climbing_timers_stay_timers():
+    assert one("start climbing") == ("start_timer", {"category": "Climbing"})
+    assert one("stop climbing") == ("stop_timer", {"category": "Climbing"})
 
 
 def test_new_category_by_name():
@@ -144,7 +179,7 @@ def test_timers(text, expected):
 
 def test_done_task_vs_done_log():
     assert one("done SI slides") == ("complete_task_by_title", {"query": "SI slides"})
-    kind, p = one("done climbing 2h")
+    kind, p = one("done homework 2h")
     assert kind == "log_time" and p["duration_min"] == 120
 
 

@@ -7,8 +7,8 @@ from sqlalchemy import select
 from app.actions.base import ActionContext, ActionError, Outcome, Step, action
 from app.actions.common import check_job, get_or_404, resolve_category, set_fields
 from app.config import MIN_ENTRY_MINUTES
-from app.models import Category, Task, TimeEntry
-from app.schemas import TimeEntryOut
+from app.models import Category, Climb, Task, TimeEntry
+from app.schemas import ClimbOut, TimeEntryOut
 from app.timeutil import AwareDatetime, fmt_duration, fmt_local, minutes_between
 
 TimeSource = Literal["timer", "voice", "manual", "calendar", "pipeline"]
@@ -99,6 +99,20 @@ def _restore_fields_step(entry_id: int, before: dict) -> Step:
     return Step("restore_time_entry_fields", {"entry_id": entry_id, "values": before})
 
 
+def remove_entry(ctx: ActionContext, entry: TimeEntry) -> list[Step]:
+    """Delete an entry (its climb row goes with it via the FK cascade) and return
+    the steps that restore both, entry first."""
+    steps = [Step("restore_time_entry", {"entry": _snapshot(entry)})]
+    climb = ctx.session.scalar(select(Climb).where(Climb.time_entry_id == entry.id))
+    if climb is not None:
+        steps.append(Step("restore_climb",
+                          {"climb": ClimbOut.model_validate(climb).model_dump(mode="json")}))
+        ctx.session.delete(climb)
+    ctx.session.delete(entry)
+    ctx.session.flush()
+    return steps
+
+
 def _check_task(ctx: ActionContext, task_id: int | None) -> None:
     if task_id is not None:
         get_or_404(ctx.session, Task, task_id)
@@ -118,12 +132,9 @@ def _close(ctx: ActionContext, entry: TimeEntry, at) -> tuple[str, list[Step]]:
     label = entry.job or category.name
     minutes = minutes_between(entry.started_at, at)
     if minutes < MIN_ENTRY_MINUTES:
-        snapshot = _snapshot(entry)
-        ctx.session.delete(entry)
-        ctx.session.flush()
         return (
             f"Dropped {label} timer (under {MIN_ENTRY_MINUTES} min)",
-            [Step("restore_time_entry", {"entry": snapshot})],
+            remove_entry(ctx, entry),
         )
     before = set_fields(entry, {"ended_at": at, "duration_min": minutes}, TimeEntryOut)
     ctx.session.flush()
@@ -215,10 +226,7 @@ def update_time_entry(ctx: ActionContext, p: UpdateTimeEntry) -> Outcome:
 @action("delete_time_entry", EntryRef)
 def delete_time_entry(ctx: ActionContext, p: EntryRef) -> Outcome:
     entry = get_or_404(ctx.session, TimeEntry, p.entry_id, lock=True)
-    snapshot = _snapshot(entry)
-    ctx.session.delete(entry)
-    ctx.session.flush()
-    return Outcome("Deleted time entry", [Step("restore_time_entry", {"entry": snapshot})])
+    return Outcome("Deleted time entry", remove_entry(ctx, entry))
 
 
 @action("restore_time_entry", RestoreTimeEntry, internal=True)

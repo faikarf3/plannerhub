@@ -14,6 +14,9 @@ Grammar (case-insensitive):
   <activity> <duration|range> [yesterday] [note...]
       durations: 2h, 1.5h, 2h30m, 45m, 90 min; prefix ~/about/around = estimate
       ranges:    3-6pm, 3pm-6pm, 2:30-4, 14:00-16:00, from 2 to 4
+  climbing logs become log_climb; the note is "[at] <gym>[, notes]":
+      climb 2h vital / climbed 2-4 at Vital, worked the overhang / climb 1h, felt strong
+      (a note starting with "with", "felt", ... is all notes, no gym)
 """
 
 import re
@@ -21,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
-from app.config import ACTIVITIES
+from app.config import ACTIVITIES, CLIMBING_CATEGORY
 from app.timeutil import LOCAL_TZ
 
 
@@ -310,7 +313,31 @@ def _parse_log(text, original, local_now, today, vocab) -> list[Intent] | None:
         payload["note"] = note
     if estimate:
         payload["confirmed"] = False
+    if act.category == CLIMBING_CATEGORY:
+        return [Intent("log_climb", _climb_payload(payload))]
     return [Intent("log_time", payload)]
+
+
+_NOTE_SPLIT = re.compile(r"\s*[,;:]\s*|\s+[-–—]\s+")
+_NOT_A_GYM = re.compile(r"(?i)^(?:with|felt|feeling|and|worked|working|did|on|for|projecting)\b")
+
+
+def _climb_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """log_time payload -> log_climb: the note's first part is the gym."""
+    climb = {k: v for k, v in payload.items() if k not in ("category", "note")}
+    note = payload.get("note", "")
+    if not note:
+        return climb
+    if _NOT_A_GYM.match(note):
+        climb["notes"] = note
+        return climb
+    gym, rest = (_NOTE_SPLIT.split(note, maxsplit=1) + [""])[:2]
+    gym = re.sub(r"(?i)^(?:at|@)\s+", "", gym).strip()
+    if gym:
+        climb["gym"] = gym
+    if rest:
+        climb["notes"] = rest
+    return climb
 
 
 def _activity_payload(act: Activity) -> dict[str, Any]:

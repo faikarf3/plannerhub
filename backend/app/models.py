@@ -101,6 +101,20 @@ class TimeEntry(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 
+class Climb(Base):
+    """Climbing details for a time entry; date and duration live on the entry."""
+
+    __tablename__ = "climbs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    time_entry_id: Mapped[int] = mapped_column(
+        ForeignKey("time_entries.id", ondelete="CASCADE"), unique=True
+    )
+    gym: Mapped[str | None] = mapped_column(String(100))
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
 class JournalEntry(Base):
     __tablename__ = "journal_entries"
     __table_args__ = (

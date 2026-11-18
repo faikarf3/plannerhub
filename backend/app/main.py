@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.actions import ActionError
 from app.deps import require_token
-from app.routers import log, misc, tasks, time
+from app.routers import climbs, log, misc, tasks, time
 
 # App loggers ("planner.*") to stdout, which Cloud Run sends to Cloud Logging.
 # Uvicorn configures its own loggers and doesn't propagate, so no duplicates.
@@ -51,5 +51,5 @@ def health() -> dict:
     return {"ok": True}
 
 
-for r in (log.router, tasks.router, time.router, misc.router):
+for r in (log.router, tasks.router, time.router, climbs.router, misc.router):
     app.include_router(r, dependencies=[Depends(require_token)])

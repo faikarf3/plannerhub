@@ -72,5 +72,7 @@ ACTIVITIES: dict[str, tuple[str, str | None]] = {
 }
 
 FALLBACK_CATEGORY = "Personal"
+# log_climb files its time entry here; GET /climbs lists this category's entries.
+CLIMBING_CATEGORY = "Climbing"
 MIN_ENTRY_MINUTES = 2
 LONG_TIMER_HOURS = 4
