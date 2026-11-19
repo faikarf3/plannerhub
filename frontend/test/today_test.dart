@@ -75,7 +75,8 @@ Future<FakeApi> pumpToday(WidgetTester tester, {required bool running}) async {
         },
   });
   await tester.pumpWidget(AppScope(
-    api: ApiClient(baseUrl: 'http://test', token: () async => 'test-token', httpClient: api.client),
+    api: ApiClient(baseUrl: 'http://test', token: ({refresh = false}) async => 'test-token',
+        httpClient: api.client),
     auth: Auth.withToken('test-token'),
     child: MaterialApp(theme: buildTheme(fonts: false), home: const Scaffold(body: TodayScreen())),
   ));

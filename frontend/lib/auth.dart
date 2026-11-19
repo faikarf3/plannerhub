@@ -29,10 +29,23 @@ class Auth extends ChangeNotifier {
   bool get usingDevToken => Config.devToken.isNotEmpty;
   bool get signedIn => _fixedToken != null || usingDevToken || user != null;
 
-  Future<String?> token() async =>
-      _fixedToken ?? (usingDevToken ? Config.devToken : await user?.getIdToken());
+  /// Why the last sign-in was refused, shown on the sign-in screen.
+  String? rejection;
+
+  Future<String?> token({bool refresh = false}) async =>
+      _fixedToken ?? (usingDevToken ? Config.devToken : await user?.getIdToken(refresh));
+
+  /// The server refused this account (not allowed, unverified, wrong project…):
+  /// sign out and keep its message for the sign-in screen. A dev token can't be
+  /// fixed by signing in again, so it's left alone.
+  Future<void> rejected(String message) async {
+    if (_fixedToken != null || usingDevToken || user == null) return;
+    rejection = message;
+    await signOut();
+  }
 
   Future<void> signInWithGoogle() async {
+    rejection = null;
     final provider = GoogleAuthProvider()..setCustomParameters({'prompt': 'select_account'});
     if (kIsWeb) {
       await FirebaseAuth.instance.signInWithPopup(provider);

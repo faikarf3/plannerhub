@@ -15,18 +15,55 @@ class ApiException implements Exception {
 
 /// Thin typed wrapper over the Planner Hub API. Every write goes through the
 /// backend's action layer, so each one returns an action id that can be undone.
+/// Gets the bearer token; `refresh` asks Firebase for a new one.
+typedef TokenSource = Future<String?> Function({bool refresh});
+
 class ApiClient {
-  ApiClient({required this.baseUrl, required this.token, http.Client? httpClient})
-      : _http = httpClient ?? http.Client();
+  ApiClient({
+    required this.baseUrl,
+    required this.token,
+    this.onUnauthorized,
+    http.Client? httpClient,
+    this.retryDelays = const [Duration(seconds: 1), Duration(seconds: 3)],
+  }) : _http = httpClient ?? http.Client();
 
   final String baseUrl;
-  final Future<String?> Function() token;
+  final TokenSource token;
+
+  /// Called with the server's message when it refuses the sign-in (a 401 that a
+  /// fresh token didn't fix). The app signs out and shows it on the sign-in screen.
+  final void Function(String message)? onUnauthorized;
+
+  /// Waits before retrying a 503 (the server couldn't reach Google to check the sign-in).
+  final List<Duration> retryDelays;
   final http.Client _http;
 
   Future<dynamic> _send(String method, String path, {Object? body, Map<String, String>? query}) async {
+    var refreshed = false;
+    var attempt = 0;
+    while (true) {
+      try {
+        return await _once(method, path, body: body, query: query, refresh: refreshed);
+      } on ApiException catch (e) {
+        if (e.status == 401 && !refreshed && e.message.toLowerCase().contains('expired')) {
+          refreshed = true; // one retry with a fresh Firebase token
+          continue;
+        }
+        if (e.status == 503 && attempt < retryDelays.length) {
+          await Future<void>.delayed(retryDelays[attempt++]);
+          continue;
+        }
+        if (e.status == 401) onUnauthorized?.call(e.message);
+        rethrow;
+      }
+    }
+  }
+
+  Future<dynamic> _once(String method, String path,
+      {Object? body, Map<String, String>? query, required bool refresh}) async {
     final uri = Uri.parse('$baseUrl$path').replace(queryParameters: query);
     final request = http.Request(method, uri);
-    final t = await token();
+    final t = await token(refresh: refresh);
     if (t != null) request.headers['Authorization'] = 'Bearer $t';
     if (body != null) {
       request.headers['Content-Type'] = 'application/json';
@@ -56,6 +93,10 @@ class ApiClient {
       ActionResult.fromJson(await _obj(method, path, body: body));
 
   // ---- reads
+
+  /// Who the server thinks we are; called right after sign-in to confirm the
+  /// account is allowed ({"auth": "owner"|"firebase", "email", "uid"}).
+  Future<Map<String, dynamic>> me() => _obj('GET', '/me');
 
   Future<TodayData> today() async => TodayData.fromJson(await _obj('GET', '/today'));
 

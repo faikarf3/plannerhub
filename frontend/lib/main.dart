@@ -14,7 +14,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   final auth = Auth();
-  runApp(PlannerHubApp(auth: auth, api: ApiClient(baseUrl: Config.apiBase, token: auth.token)));
+  final api = ApiClient(baseUrl: Config.apiBase, token: auth.token, onUnauthorized: auth.rejected);
+  runApp(PlannerHubApp(auth: auth, api: api));
 }
 
 class PlannerHubApp extends StatelessWidget {

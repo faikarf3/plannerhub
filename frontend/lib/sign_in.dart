@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'api/client.dart';
 import 'scope.dart';
 import 'theme.dart';
 
@@ -15,13 +16,26 @@ class _SignInScreenState extends State<SignInScreen> {
   bool _busy = false;
   String? _error;
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Sent back here because the server refused the account mid-session.
+    _error ??= AppScope.of(context).auth.rejection;
+  }
+
   Future<void> _google() async {
     setState(() {
       _busy = true;
       _error = null;
     });
+    final scope = AppScope.of(context);
     try {
-      await AppScope.of(context).auth.signInWithGoogle();
+      await scope.auth.signInWithGoogle();
+      // Confirm the server accepts this account before showing the app; a refusal
+      // signs out (via ApiClient.onUnauthorized) and lands back here with the reason.
+      await scope.api.me();
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = scope.auth.rejection ?? e.message);
     } on FirebaseAuthException catch (e) {
       // Closing the Google window isn't an error worth showing.
       final cancelled = e.code.contains('cancel') || e.code == 'popup-closed-by-user';
