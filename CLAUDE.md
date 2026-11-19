@@ -34,6 +34,8 @@ gcloud run deploy planner-api --project planner-hub-97a70d --source backend --re
 
 `--allow-unauthenticated` only makes the URL reachable; every route but `/health` still requires the bearer token. A $1/month budget alert is set on billing account "Main".
 
+CORS: `CORSMiddleware` in `app/main.py` allows origins full-matching `PLANNER_CORS_ORIGIN_REGEX` (default: any http localhost/127.0.0.1 port, and the two Firebase Hosting domains for `planner-hub-97a70d`), with only the Authorization and Content-Type headers and no credentials.
+
 Tests run against real Postgres: each test is wrapped in an outer transaction that's rolled back, and the app's commits become savepoint releases (see `tests/conftest.py`). Auth is a single bearer token (`PLANNER_API_TOKEN`) on every route except `/health`; Firebase Auth replaces it when the app arrives.
 
 ## Backend layout

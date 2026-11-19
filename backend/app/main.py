@@ -3,9 +3,11 @@ import logging
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.actions import ActionError
+from app.config import get_settings
 from app.deps import require_token
 from app.routers import climbs, log, misc, pipelines, schedules, tasks, time
 
@@ -14,6 +16,17 @@ from app.routers import climbs, log, misc, pipelines, schedules, tasks, time
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 app = FastAPI(title="Planner Hub")
+
+# The Flutter web build calls the API from a browser. Starlette full-matches the
+# regex against the Origin header. No cookies are used (auth is a bearer header),
+# so credentials stay off.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=get_settings().cors_origin_regex,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
+    max_age=600,
+)
 
 
 # Every error body carries a human-readable `message`, the same key successful

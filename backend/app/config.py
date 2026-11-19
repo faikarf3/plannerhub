@@ -35,6 +35,12 @@ class Settings(BaseSettings):
     # turns it off: unparsed text is then only saved to the journal.
     gemini_api_key: str | None = None
     gemini_model: str = "gemini-3.5-flash-lite"
+    # Browser origins allowed to call the API (the Flutter web build): any localhost /
+    # 127.0.0.1 port in development, plus the Firebase Hosting domains.
+    cors_origin_regex: str = (
+        r"http://(localhost|127\.0\.0\.1)(:\d+)?"
+        r"|https://planner-hub-97a70d\.(web\.app|firebaseapp\.com)"
+    )
 
     @field_validator("database_url", "migration_database_url")
     @classmethod

@@ -161,6 +161,8 @@ Rules:
 
 FastAPI, JSON in and out; app clients authenticate with Firebase Auth, pipelines with a per-source API key.
 
+Browsers may call the API from any `http://localhost` or `http://127.0.0.1` port (development) and from `https://planner-hub-97a70d.web.app` / `.firebaseapp.com` (Firebase Hosting); the list is the `PLANNER_CORS_ORIGIN_REGEX` setting. Auth is a bearer header, never cookies.
+
 | Method and path | Purpose |
 | --- | --- |
 | `POST /voice` | Upload audio; returns transcript, applied actions, clarify questions |
