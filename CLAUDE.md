@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Planner Hub is a single-user, phone-first app for logging tasks, time and paid work shifts (by voice or typing) and rolling them up into weekly/monthly reports and a payroll timesheet. Product spec: [Planner_Hub_Spec_v1.md](Planner_Hub_Spec_v1.md).
 
-Phase 1 (core backend) is built in [backend/](backend/) and deployed. Phase 2 is mostly done: the Gemini fallback for `/log`, `clarify`, `set_mood` and `log_climb` exist. `/voice` is deferred (Siri dictation already transcribes) and `log_application` is dropped: applications will come from the user's existing tracker via `/events`. The iOS Shortcut is a user-built "Dictate Text → POST /log", run through Siri. No Flutter app.
+Phase 1 (core backend) is built in [backend/](backend/) and deployed. Phase 2 is mostly done: the Gemini fallback for `/log`, `clarify`, `set_mood` and `log_climb` exist. `/voice` is deferred (Siri dictation already transcribes) and `log_application` is dropped: applications will come from the user's existing tracker via `/events`. The iOS Shortcut is a user-built "Dictate Text → POST /log", run through Siri. No Flutter app yet: its screens (Today, Calendar, Schedule, Projects, Week, task/clock-in/sign-in) are designed on a canvas linked from the spec's "App screens" section, still in review. Next backend work: `/events` with per-pipeline keys, the `schedules` table, and the Projects summaries (spec "Integrations").
 
 ## Commands
 
@@ -61,14 +61,14 @@ Tests run against real Postgres: each test is wrapped in an outer transaction th
 
 These cut across the whole system and must hold in every feature:
 
-- **Only the action layer writes to Postgres.** Voice, typed text, manual forms, and pipeline webhooks all funnel into the same set of action functions (`create_task`, `complete_task`, `update_task`, `log_time`, `start_timer`/`stop_timer`, `log_climb`, `log_application`, `set_mood`, `clarify`). Manual forms and AI tool calls share these functions.
+- **Only the action layer writes to Postgres.** Voice, typed text, manual forms, and pipeline webhooks all funnel into the same set of action functions (`create_task`, `complete_task`, `update_task`, `log_time`, `start_timer`/`stop_timer`, `log_climb`, `set_mood`, `clarify`, and the reactions to pipeline events). Manual forms and AI tool calls share these functions.
 - **The model never writes to the DB.** It returns tool calls; the action layer validates and applies them. `clarify` applies nothing and surfaces a question on the confirmation card. The model must not invent times/durations — missing info → `clarify`.
 - **Every change goes in `action_log` with an `inverse`.** This is what powers per-action undo (`POST /actions/{id}/undo`). Any new action type needs an inverse.
 - **Raw input is always kept.** Every voice/typed log creates a `journal_entries` row with the raw transcript, even if extraction yields nothing.
 - **`/log` flow:** deterministic quick-add parser first (e.g. `climb 2h vital`, `SI prep 45m`, `tutoring 3-6pm`, `task follow up Traveloka fri`); only unparseable input falls through to Gemini. `/voice` and `/log` return the same response shape.
 - **Categories are data, not code.** New areas are rows in `categories` (with `parent_id`, `is_work`, `weekly_target_hours`); don't hardcode category lists.
 - **One timeline for all time.** Work shifts are ordinary `time_entries` in an `is_work` category with a `job` field (tutoring, SI sessions, SI prep, restaurant). SI prep counts as paid work.
-- **Pipelines push, hub reacts.** External pipelines (3AM Facts, job auto-apply) post to `POST /events` (raw inbox in `events` table); the hub creates tasks only for steps needing a human.
+- **Pipelines push, hub reacts.** External pipelines (3AM Facts, a local nightly script; the job-application tracker, Claude scheduled tasks) post to `POST /events` with their own key (raw inbox in `events` table); the hub creates tasks only for steps needing a human. Pipelines report successes too, so a run that never happened is flagged as missing. The hub monitors them; it doesn't replace them.
 
 ## Time-entry rules
 
@@ -85,7 +85,7 @@ These cut across the whole system and must hold in every feature:
 2. Logging: `/log` quick-add parser, `/voice` with transcription + Gemini tools, iOS Shortcut.
 3. Flutter app: today view, mic, timer/clock-in buttons, confirmation cards, offline queue.
 4. Reports: weekly/monthly hours, planned vs actual, timesheet, evening check-in.
-5. Pipelines: `/events` for 3AM Facts and auto-apply; SI Sunday loop.
+5. Pipelines and Projects: `/events` for 3AM Facts and the job tracker, missing-run detection, Projects tab, SI checklist and Sunday loop.
 6. Later: Calendar sync, Gmail parsing, gap detection, goals/streaks, NL queries.
 
 Out of scope: spending tracking, multiple users. Notification times are settings, not code.
