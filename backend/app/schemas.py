@@ -1,7 +1,7 @@
 """Read models. Also used as undo snapshots: a deleted row's `*Out` dump is the
 payload of its restore action, so the two can never drift apart."""
 
-from datetime import date
+from datetime import date, time
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
@@ -95,6 +95,45 @@ class EventOut(_Orm):
     received_at: UtcDatetime
     processed_at: UtcDatetime | None
     error: str | None
+
+
+class ScheduleOut(_Orm):
+    id: int
+    title: str | None
+    category_id: int
+    job: str | None
+    weekdays: list[int]
+    start_time: time
+    end_time: time
+    starts_on: date
+    until: date | None
+    note: str | None
+
+
+class ScheduleExceptionOut(_Orm):
+    id: int
+    schedule_id: int
+    on_date: date
+    skipped: bool
+    started_at: UtcDatetime | None
+    ended_at: UtcDatetime | None
+    time_entry_id: int | None
+
+
+class OccurrenceOut(BaseModel):
+    """One planned block from a repeating schedule."""
+
+    schedule_id: int
+    on_date: date
+    started_at: UtcDatetime
+    ended_at: UtcDatetime
+    label: str
+    category_id: int
+    job: str | None
+    is_work: bool
+    status: str  # planned, skipped, done
+    moved: bool
+    time_entry_id: int | None
 
 
 class ActionOut(BaseModel):

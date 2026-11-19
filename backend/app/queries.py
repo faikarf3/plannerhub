@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.config import DAILY_APPLICATION_TARGET, FACTS_REPORT_BY_HOUR, LONG_TIMER_HOURS
 from app.models import Application, Category, ContentItem, Task, TimeEntry
-from app.schemas import ContentItemOut, TaskOut, TimeEntryOut
+from app.schedule import occurrences
+from app.schemas import ContentItemOut, OccurrenceOut, TaskOut, TimeEntryOut
 from app.timeutil import LOCAL_TZ, fmt_duration, fmt_local, local_day_bounds, minutes_between
 
 OPEN = ("todo", "doing")
@@ -69,6 +70,9 @@ def today_view(session: Session, day: date, now: datetime) -> dict:
         "tasks_due": _dump(TaskOut, _due(session, end)),
         "scheduled": _dump(TaskOut, [t for t in scheduled if not cats[t.category_id].is_work]),
         "planned_shifts": _dump(TaskOut, [t for t in scheduled if cats[t.category_id].is_work]),
+        # From repeating schedules; status planned or done (skipped ones are left out).
+        "planned_blocks": [OccurrenceOut(**vars(o)).model_dump(mode="json")
+                           for o in occurrences(session, day, day)],
         "running_timer": TimeEntryOut.model_validate(running).model_dump(mode="json")
         if running else None,
         "time_entries": _dump(TimeEntryOut, entries),
@@ -101,6 +105,8 @@ def morning_digest(session: Session, day: date, now: datetime) -> dict:
     overdue = [t for t in due if t.due_at < start]
     due_today = [t for t in due if t.due_at >= start]
     shifts = [t for t in _scheduled(session, start, end) if cats[t.category_id].is_work]
+    repeat_shifts = [o for o in occurrences(session, day, day)
+                     if o.is_work and o.status == "planned" and o.started_at >= start]
     yesterday = [e for e in _entries(session, y_start, start) if e.ended_at is not None]
     y_totals = _minutes_by_category(yesterday, cats, now)
     unconfirmed = sum(1 for e in yesterday if not e.confirmed)
@@ -114,9 +120,11 @@ def morning_digest(session: Session, day: date, now: datetime) -> dict:
         Application.applied_at >= y_start, Application.applied_at < start))
 
     lines: list[str] = []
-    if shifts:
-        lines.append("Shifts: " + ", ".join(
-            f"{t.title} {fmt_local(t.scheduled_start)}" for t in shifts))
+    shift_names = sorted(
+        [(t.scheduled_start, t.title) for t in shifts]
+        + [(o.started_at, o.label) for o in repeat_shifts])
+    if shift_names:
+        lines.append("Shifts: " + ", ".join(f"{name} {fmt_local(at)}" for at, name in shift_names))
     if due_today:
         lines.append(f"Due today ({len(due_today)}): " + ", ".join(t.title for t in due_today))
     if overdue:
@@ -140,6 +148,8 @@ def morning_digest(session: Session, day: date, now: datetime) -> dict:
     return {
         "date": day.isoformat(),
         "planned_shifts": _dump(TaskOut, shifts),
+        "planned_blocks": [OccurrenceOut(**vars(o)).model_dump(mode="json")
+                           for o in repeat_shifts],
         "due_today": _dump(TaskOut, due_today),
         "overdue": _dump(TaskOut, overdue),
         "yesterday_minutes_by_category": y_totals,

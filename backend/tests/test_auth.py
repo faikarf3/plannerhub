@@ -32,3 +32,10 @@ def test_validation_error_has_message(client):
     r = client.post("/log", json={"txt": "oops"})
     assert r.status_code == 422
     assert r.json()["message"].startswith("bad request: text")
+
+
+def test_custom_validator_error_is_a_clean_422(client):
+    r = client.post("/tasks", json={"title": "x", "scheduled_start": "2026-11-20T10:00:00",
+                                    "scheduled_end": "2026-11-20T09:00:00"})
+    assert r.status_code == 422
+    assert "scheduled_end must be after scheduled_start" in r.json()["message"]

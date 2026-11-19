@@ -1,12 +1,13 @@
 import logging
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.actions import ActionError
 from app.deps import require_token
-from app.routers import climbs, log, misc, pipelines, tasks, time
+from app.routers import climbs, log, misc, pipelines, schedules, tasks, time
 
 # App loggers ("planner.*") to stdout, which Cloud Run sends to Cloud Logging.
 # Uvicorn configures its own loggers and doesn't propagate, so no duplicates.
@@ -34,10 +35,12 @@ def _http_error(_: Request, exc: HTTPException) -> JSONResponse:
 
 @app.exception_handler(RequestValidationError)
 def _validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
-    errors = exc.errors()
+    # `ctx` can hold the raised exception itself (custom validators), which isn't JSON.
+    errors = [{k: v for k, v in e.items() if k != "ctx"} for e in exc.errors()]
     parts = [f"{'.'.join(str(p) for p in e['loc'] if p != 'body')}: {e['msg']}" for e in errors]
     return JSONResponse(
-        {"detail": errors, "message": "bad request: " + "; ".join(parts)}, status_code=422
+        {"detail": jsonable_encoder(errors), "message": "bad request: " + "; ".join(parts)},
+        status_code=422,
     )
 
 
@@ -51,7 +54,8 @@ def health() -> dict:
     return {"ok": True}
 
 
-for r in (log.router, tasks.router, time.router, climbs.router, pipelines.router, misc.router):
+for r in (log.router, tasks.router, time.router, climbs.router, schedules.router,
+          pipelines.router, misc.router):
     app.include_router(r, dependencies=[Depends(require_token)])
 # Pipelines post with their own keys; deps.pipeline_source checks them.
 app.include_router(pipelines.ingest)

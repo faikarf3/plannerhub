@@ -57,7 +57,8 @@ Three tables carry the core (`tasks`, `time_entries`, `action_log`); the area ta
 | `categories` | id, name, color, parent\_id, is\_work, weekly\_target\_hours | Configurable; parent\_id allows sub-categories |
 | `tasks` | id, title, category\_id, status (todo, doing, done, skipped), due\_at, scheduled\_start, scheduled\_end, recurrence\_rule, source, linked\_type, linked\_id, completed\_at | linked\_\* points at an area row, e.g. an application |
 | `time_entries` | id, category\_id, task\_id, job, started\_at, ended\_at, duration\_min, source (timer, voice, manual, calendar, pipeline), confirmed, note | ended\_at null = the running timer; at most one at a time |
-| `schedules` | id, category\_id, job, weekdays (Mon–Sun set), start\_time, end\_time (earlier than start = ends next day), starts\_on, until (null = no end), note | Repeating weekly blocks; expanded into planned blocks on the calendar, not stored per week. Skipping one week is an exception row, not a change to the rule |
+| `schedules` | id, title, category\_id, job, weekdays (0 = Mon … 6 = Sun), start\_time, end\_time (earlier than start = ends next day), starts\_on, until (null = no end), note | Built. Repeating weekly blocks in New York wall-clock time; expanded into planned blocks on the calendar, not stored per week |
+| `schedule_exceptions` | id, schedule\_id, on\_date, skipped, started\_at, ended\_at, time\_entry\_id | Built. One week that differs from its rule: skipped, moved, or done (linked to the time entry that logged it). Deleting that entry makes the block planned again |
 | `applications` | id, company, role, url, status (applied, OA, interview, offer, rejected, ghosted), applied\_at, follow\_up\_at, source | Written only from tracker events (no manual logging); follow-up task created when follow\_up\_at passes with no reply |
 | `si_sessions` | id, week\_of, topic, plan\_form\_done, slides\_done, breakdown\_done, answer\_sheet\_done, session\_at, attendance | One row per Monday session; the four flags are the Projects-tab checklist |
 | `climbs` | id, time\_entry\_id (unique, cascades), gym, notes | Built. Date and duration come from the linked time entry; a climbing entry with no row still counts as a session |
@@ -171,7 +172,9 @@ FastAPI, JSON in and out; app clients authenticate with Firebase Auth, pipelines
 | `GET, POST, PATCH /time-entries` | Time entry CRUD; `POST /timer/start`, `POST /timer/stop` |
 | `POST /shifts/clock-in`, `/clock-out` | Work shortcuts used by the home-screen button and the iOS Shortcut |
 | `GET, POST /climbs` | Climbing sessions (built) |
-| `GET, POST, PATCH, DELETE /schedules` | Repeating weekly blocks; `GET /calendar?start=&end=` returns logged entries plus planned blocks expanded from them |
+| `GET, POST, PATCH, DELETE /schedules` | Repeating weekly blocks; the list includes minutes per week and the weekly paid total (built) |
+| `POST /schedules/{id}/occurrences/{date}/skip`, `/move`, `/confirm` | Change one week only: skip it, move it, or mark it done (logs a time entry at the planned times unless others are given) (built) |
+| `GET /calendar?start=&end=` | Logged entries, planned blocks from repeats (planned, done; skipped on request) and one-off scheduled tasks for local days start..end; default this Monday to Sunday (built) |
 | `GET /projects` | One summary per project card: job search counts and items needing the user, last 3AM Facts run, SI checklist |
 | `GET /applications?status=`, `GET /content` | Project detail pages, read-only: pipelines write them through events (built) |
 | `GET, PATCH /si-sessions` | SI checklist |

@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 from decimal import Decimal
 from typing import Any
 
@@ -16,7 +16,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 TASK_STATUSES = ("todo", "doing", "done", "skipped")
@@ -116,6 +116,53 @@ class Climb(Base):
     gym: Mapped[str | None] = mapped_column(String(100))
     notes: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class Schedule(Base):
+    """A repeating weekly block ("tutoring every Tue 3-6pm"). Occurrences are
+    computed from the rule (app/schedule.py), never stored per week; one-week
+    changes are ScheduleException rows. Times are New York wall-clock times; an
+    end_time earlier than start_time ends the next day."""
+
+    __tablename__ = "schedules"
+    __table_args__ = (
+        CheckConstraint("start_time <> end_time", name="nonzero_length"),
+        CheckConstraint("until IS NULL OR until >= starts_on", name="until_after_start"),
+        CheckConstraint("cardinality(weekdays) > 0", name="has_days"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    title: Mapped[str | None] = mapped_column(String(100))
+    category_id: Mapped[int] = mapped_column(ForeignKey("categories.id", ondelete="RESTRICT"))
+    job: Mapped[str | None] = mapped_column(String(30))
+    weekdays: Mapped[list[int]] = mapped_column(ARRAY(Integer))  # 0 = Monday
+    start_time: Mapped[time]
+    end_time: Mapped[time]
+    starts_on: Mapped[date]
+    until: Mapped[date | None]
+    note: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class ScheduleException(Base):
+    """One occurrence (identified by the local date it starts on) that differs
+    from its rule: skipped, moved, or confirmed as done (linked time entry)."""
+
+    __tablename__ = "schedule_exceptions"
+    __table_args__ = (
+        UniqueConstraint("schedule_id", "on_date", name="uq_schedule_exceptions_occurrence"),
+        CheckConstraint("ended_at IS NULL OR ended_at > started_at", name="end_after_start"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    schedule_id: Mapped[int] = mapped_column(ForeignKey("schedules.id", ondelete="CASCADE"))
+    on_date: Mapped[date]
+    skipped: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    started_at: Mapped[datetime | None]
+    ended_at: Mapped[datetime | None]
+    time_entry_id: Mapped[int | None] = mapped_column(
+        ForeignKey("time_entries.id", ondelete="SET NULL")
+    )
 
 
 class JournalEntry(Base):

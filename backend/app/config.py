@@ -56,6 +56,13 @@ JOBS: dict[str, str] = {
     "restaurant": "Work",
 }
 
+JOB_LABELS: dict[str, str] = {
+    "tutoring": "Tutoring",
+    "si_session": "SI session",
+    "si_prep": "SI prep",
+    "restaurant": "Restaurant",
+}
+
 # Quick-add vocabulary: word(s) -> (category name, job). Category names themselves
 # also match automatically, so a new category is usable in quick-add without code.
 ACTIVITIES: dict[str, tuple[str, str | None]] = {
