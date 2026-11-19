@@ -74,5 +74,19 @@ ACTIVITIES: dict[str, tuple[str, str | None]] = {
 FALLBACK_CATEGORY = "Personal"
 # log_climb files its time entry here; GET /climbs lists this category's entries.
 CLIMBING_CATEGORY = "Climbing"
+# Pipelines that may post to /events, and the event types each one sends.
+PIPELINES: dict[str, frozenset[str]] = {
+    "3am_facts": frozenset({"video_created", "posted", "run_failed"}),
+    "job_tracker": frozenset(
+        {"application_submitted", "reply_received", "run_finished", "run_failed"}
+    ),
+}
+FACTS_CATEGORY = "3AM Facts"
+JOB_SEARCH_CATEGORY = "Job Search"
+# Local hour by which last night's 3AM Facts video should have reported; after it,
+# POST /pipelines/check marks the night missing.
+FACTS_REPORT_BY_HOUR = 7
+DAILY_APPLICATION_TARGET = 20
+
 MIN_ENTRY_MINUTES = 2
 LONG_TIMER_HOURS = 4

@@ -1,6 +1,7 @@
 """Read models. Also used as undo snapshots: a deleted row's `*Out` dump is the
 payload of its restore action, so the two can never drift apart."""
 
+from datetime import date
 from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
@@ -56,6 +57,46 @@ class ClimbOut(_Orm):
     notes: str | None
 
 
+class ApplicationOut(_Orm):
+    id: int
+    company: str
+    role: str | None
+    url: str | None
+    status: str
+    applied_at: UtcDatetime | None
+    replied_at: UtcDatetime | None
+
+
+class ContentItemOut(_Orm):
+    id: int
+    run_date: date
+    title: str | None
+    url: str | None
+    status: str
+    posts: dict
+    error: str | None
+
+
+class PipelineKeyOut(_Orm):
+    id: int
+    source: str
+    hint: str
+    created_at: UtcDatetime
+    revoked_at: UtcDatetime | None
+
+
+class EventOut(_Orm):
+    id: int
+    source: str
+    type: str
+    sender_id: str | None
+    payload: dict
+    occurred_at: UtcDatetime
+    received_at: UtcDatetime
+    processed_at: UtcDatetime | None
+    error: str | None
+
+
 class ActionOut(BaseModel):
     """One line on a confirmation card."""
 
@@ -68,6 +109,7 @@ class ActionOut(BaseModel):
 class ActionLogOut(_Orm):
     id: int
     journal_entry_id: int | None
+    event_id: int | None = None
     action_type: str
     summary: str
     payload: dict

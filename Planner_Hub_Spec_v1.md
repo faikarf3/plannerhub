@@ -173,8 +173,12 @@ FastAPI, JSON in and out; app clients authenticate with Firebase Auth, pipelines
 | `GET, POST /climbs` | Climbing sessions (built) |
 | `GET, POST, PATCH, DELETE /schedules` | Repeating weekly blocks; `GET /calendar?start=&end=` returns logged entries plus planned blocks expanded from them |
 | `GET /projects` | One summary per project card: job search counts and items needing the user, last 3AM Facts run, SI checklist |
-| `GET /applications`, `GET /content`, `GET, PATCH /si-sessions` | Project detail pages; applications and content are read-only (pipelines write them through events) |
-| `POST /events` | Pipeline webhooks (3AM Facts, job tracker), authenticated with that pipeline's own key |
+| `GET /applications?status=`, `GET /content` | Project detail pages, read-only: pipelines write them through events (built) |
+| `GET, PATCH /si-sessions` | SI checklist |
+| `POST /events` | Pipeline webhooks (3AM Facts, job tracker), authenticated with that pipeline's own key (built) |
+| `GET /events?source=` | Recent raw events, newest first (built) |
+| `GET, POST /pipeline-keys`, `DELETE /pipeline-keys/{id}` | Create a key for one pipeline (shown once), list keys by hint, revoke (built) |
+| `POST /pipelines/check` | Called by Cloud Scheduler each morning: marks a 3AM Facts night missing if nothing reported by 7am (built) |
 | `GET /reports?period=week\|month&start=` | Hours by category, planned vs actual, area totals |
 | `GET /timesheet?start=&end=` | Work hours per job per day |
 | `GET /export.csv` | Full time-entry export |
@@ -187,7 +191,8 @@ Pipelines push into the hub; the hub only creates tasks for steps that need a pe
 
 - Report successes as well as failures. A pipeline that never ran can't report a failure, so the hub flags silence: an expected event that hasn't arrived by its deadline becomes "missing".
 - Each pipeline gets its own key (`pipeline_keys`), separate from the app's sign-in; a leaked key can only post events for that source.
-- Request shape: `POST /events` with `Authorization: Bearer <pipeline key>` and `{"source", "type", "occurred_at"?, "data": {...}}`. The raw event is stored first; its reactions go through the action layer like any other change.
+- Request shape: `POST /events` with `Authorization: Bearer <pipeline key>` and `{"type", "data": {...}, "id"?, "occurred_at"?, "source"?}`. `source` comes from the key (the owner token may post for any source by naming it). `id` is the sender's own id for the event: a retry with the same id is ignored. `occurred_at` defaults to when it arrived; 3AM Facts nights are dated by its New York date (or `data.run_date`).
+- A wrong type or missing field is refused with 422 and not stored. Otherwise the raw event is stored first, then its reactions go through the action layer like any other change (each undoable, and `action_log.event_id` points back at the event). The reply says what was done in `message`.
 
 **3AM Facts (nightly script on the user's Mac) → `POST /events`**
 
@@ -198,7 +203,8 @@ Pipelines push into the hub; the hub only creates tasks for steps that need a pe
 
 **Job-application tracker (Claude scheduled tasks) → `POST /events`**
 
-- Events: `application_submitted` (company, role, url), `reply_received` (company, kind: rejection, OA, interview, offer; deadline if any), `run_finished` (count submitted), `run_failed` (error).
+- Events: `application_submitted` (company, role, url), `reply_received` (company, role?, kind: rejection, oa, interview, offer; deadline if any), `run_finished` (count submitted), `run_failed` (error).
+- A reply matches the application with the same company (and role, if given; otherwise the most recent one), ignoring case. An unknown company creates the application.
 - `application_submitted` creates an `applications` row; the digest and the Projects card show today's count against 20.
 - `reply_received` updates the application's status; an OA or interview creates a task with its deadline.
 - `run_failed`, or no `run_finished` on a day the tracker should run, creates a task.

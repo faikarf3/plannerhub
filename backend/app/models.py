@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -12,6 +12,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
     text,
 )
@@ -20,6 +21,8 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 TASK_STATUSES = ("todo", "doing", "done", "skipped")
 TIME_SOURCES = ("timer", "voice", "manual", "calendar", "pipeline")
+APPLICATION_STATUSES = ("applied", "oa", "interview", "offer", "rejected", "ghosted")
+CONTENT_STATUSES = ("created", "posted", "failed", "missing")
 
 
 def _in(col: str, values: tuple[str, ...]) -> str:
@@ -136,6 +139,78 @@ class JournalEntry(Base):
     clarify_answer: Mapped[str | None] = mapped_column(Text)
 
 
+class PipelineKey(Base):
+    """A key one pipeline uses to post /events. Only the hash is stored."""
+
+    __tablename__ = "pipeline_keys"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(30))
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    hint: Mapped[str] = mapped_column(String(12))  # first characters, to tell keys apart
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    revoked_at: Mapped[datetime | None]
+
+
+class Event(Base):
+    """Raw inbox for pipeline webhooks. Like journal entries, these are input, not
+    planner changes; what they lead to goes through the action layer."""
+
+    __tablename__ = "events"
+    __table_args__ = (
+        # The sender's own id makes retries harmless.
+        UniqueConstraint("source", "sender_id", name="uq_events_source_sender_id"),
+        Index("ix_events_received_at", "received_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(30))
+    type: Mapped[str] = mapped_column(String(50))
+    sender_id: Mapped[str | None] = mapped_column(String(200))
+    payload: Mapped[dict[str, Any]]
+    occurred_at: Mapped[datetime]
+    received_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    processed_at: Mapped[datetime | None]
+    error: Mapped[str | None] = mapped_column(Text)
+
+
+class Application(Base):
+    """Job applications, written only from job-tracker events."""
+
+    __tablename__ = "applications"
+    __table_args__ = (
+        CheckConstraint(_in("status", APPLICATION_STATUSES), name="status_valid"),
+        Index("ix_applications_company", func.lower(text("company"))),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company: Mapped[str] = mapped_column(String(200))
+    role: Mapped[str | None] = mapped_column(String(200))
+    url: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(20), server_default="applied")
+    applied_at: Mapped[datetime | None]
+    replied_at: Mapped[datetime | None]
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
+class ContentItem(Base):
+    """One 3AM Facts night. `missing` is set by the hub when nothing reported."""
+
+    __tablename__ = "content_items"
+    __table_args__ = (CheckConstraint(_in("status", CONTENT_STATUSES), name="status_valid"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_date: Mapped[date] = mapped_column(unique=True)
+    title: Mapped[str | None] = mapped_column(Text)
+    url: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(10))
+    posts: Mapped[dict[str, Any]] = mapped_column(server_default=text("'{}'::jsonb"))
+    error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
 class ActionLog(Base):
     """Every change from any input. `inverse` is a list of steps that reverses it."""
 
@@ -145,6 +220,7 @@ class ActionLog(Base):
     journal_entry_id: Mapped[int | None] = mapped_column(
         ForeignKey("journal_entries.id", ondelete="SET NULL")
     )
+    event_id: Mapped[int | None] = mapped_column(ForeignKey("events.id", ondelete="SET NULL"))
     action_type: Mapped[str] = mapped_column(String(50))
     payload: Mapped[dict[str, Any]]
     # [{"action_type": ..., "payload": {...}}, ...]; null = cannot be undone

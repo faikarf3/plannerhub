@@ -3,13 +3,13 @@
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.config import LONG_TIMER_HOURS
-from app.models import Category, Task, TimeEntry
-from app.schemas import TaskOut, TimeEntryOut
-from app.timeutil import fmt_duration, fmt_local, local_day_bounds, minutes_between
+from app.config import DAILY_APPLICATION_TARGET, FACTS_REPORT_BY_HOUR, LONG_TIMER_HOURS
+from app.models import Application, Category, ContentItem, Task, TimeEntry
+from app.schemas import ContentItemOut, TaskOut, TimeEntryOut
+from app.timeutil import LOCAL_TZ, fmt_duration, fmt_local, local_day_bounds, minutes_between
 
 OPEN = ("todo", "doing")
 
@@ -76,8 +76,23 @@ def today_view(session: Session, day: date, now: datetime) -> dict:
     }
 
 
+def _facts_line(item: ContentItem | None, day: date, now: datetime) -> str:
+    if item is None:
+        late = now.astimezone(LOCAL_TZ) >= datetime.combine(
+            day, datetime.min.time(), tzinfo=LOCAL_TZ) + timedelta(hours=FACTS_REPORT_BY_HOUR)
+        return "3AM Facts: no report from last night" if late else "3AM Facts: not reported yet"
+    if item.status == "posted":
+        where = ", ".join(sorted(item.posts)) or "posted"
+        return f"3AM Facts: “{item.title or 'video'}” is up ({where})"
+    if item.status == "created":
+        return f"3AM Facts: “{item.title or 'video'}” made, not posted yet"
+    if item.status == "failed":
+        return f"⚠️ 3AM Facts failed: {item.error or 'no details'}"
+    return "⚠️ 3AM Facts: no report from last night"
+
+
 def morning_digest(session: Session, day: date, now: datetime) -> dict:
-    """Data for the morning push. Applications and 3AM Facts lines arrive in Phase 5."""
+    """Data for the morning push."""
     start, end = local_day_bounds(day)
     y_start, _ = local_day_bounds(day - timedelta(days=1))
     cats = _categories(session)
@@ -90,6 +105,13 @@ def morning_digest(session: Session, day: date, now: datetime) -> dict:
     y_totals = _minutes_by_category(yesterday, cats, now)
     unconfirmed = sum(1 for e in yesterday if not e.confirmed)
     running = _running(session)
+    facts = session.scalar(select(ContentItem).where(ContentItem.run_date == day))
+    # Each line starts once its pipeline has reported anything, so an unwired
+    # pipeline doesn't nag every morning.
+    tracking_facts = facts is not None or session.scalar(select(func.count(ContentItem.id))) > 0
+    tracking_applications = session.scalar(select(func.count(Application.id))) > 0
+    applied_yesterday = session.scalar(select(func.count(Application.id)).where(
+        Application.applied_at >= y_start, Application.applied_at < start))
 
     lines: list[str] = []
     if shifts:
@@ -104,6 +126,10 @@ def morning_digest(session: Session, day: date, now: datetime) -> dict:
             f"{name} {fmt_duration(m)}" for name, m in y_totals.items()))
     if unconfirmed:
         lines.append(f"{unconfirmed} estimated entr{'y' if unconfirmed == 1 else 'ies'} to confirm")
+    if tracking_facts:
+        lines.append(_facts_line(facts, day, now))
+    if tracking_applications:
+        lines.append(f"Applications yesterday: {applied_yesterday}/{DAILY_APPLICATION_TARGET}")
     long_timer = False
     if running:
         ran = minutes_between(running.started_at, now)
@@ -121,5 +147,8 @@ def morning_digest(session: Session, day: date, now: datetime) -> dict:
         "running_timer": TimeEntryOut.model_validate(running).model_dump(mode="json")
         if running else None,
         "long_running_timer": long_timer,
+        "facts_last_night": ContentItemOut.model_validate(facts).model_dump(mode="json")
+        if facts else None,
+        "applications_yesterday": applied_yesterday,
         "text": "\n".join(lines) or "Nothing scheduled today.",
     }

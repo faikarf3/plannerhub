@@ -112,6 +112,7 @@ def apply_action(
     payload: BaseModel | dict[str, Any],
     *,
     journal_entry_id: int | None = None,
+    event_id: int | None = None,
 ) -> AppliedAction:
     defn = REGISTRY.get(action_type)
     if defn is None:
@@ -121,6 +122,7 @@ def apply_action(
 
     entry = ActionLog(
         journal_entry_id=journal_entry_id,
+        event_id=event_id,
         action_type=action_type,
         payload=params.model_dump(mode="json", exclude_unset=True),
         inverse=None if outcome.inverse is None else [s.to_json() for s in outcome.inverse],

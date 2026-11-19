@@ -17,7 +17,8 @@ router = APIRouter()
 
 def _log_out(entry: ActionLog) -> ActionLogOut:
     return ActionLogOut(
-        id=entry.id, journal_entry_id=entry.journal_entry_id, action_type=entry.action_type,
+        id=entry.id, journal_entry_id=entry.journal_entry_id, event_id=entry.event_id,
+        action_type=entry.action_type,
         summary=entry.summary, payload=entry.payload,
         undoable=entry.inverse is not None and entry.undone_at is None,
         applied_at=entry.applied_at, undone_at=entry.undone_at,
