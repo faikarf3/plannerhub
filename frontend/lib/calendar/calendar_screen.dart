@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import '../api/client.dart';
 import '../api/models.dart';
+import '../schedule/schedule_screen.dart';
 import '../scope.dart';
 import '../sheets/clock_in_sheet.dart' show jobs;
 import '../sheets/task_sheet.dart';
@@ -192,6 +193,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
             style: TextButton.styleFrom(foregroundColor: Palette.red, minimumSize: const Size(44, 44)),
             child: const Text('This week', style: TextStyle(fontWeight: FontWeight.w600)),
           ),
+        IconButton(
+          tooltip: 'Repeating schedule',
+          onPressed: () async {
+            await Navigator.push(context, MaterialPageRoute<void>(builder: (_) => const ScheduleScreen()));
+            if (mounted) _load(); // repeats may have changed
+          },
+          style: IconButton.styleFrom(backgroundColor: Palette.redTint, fixedSize: const Size(44, 44)),
+          icon: const Icon(Icons.repeat, size: 20, color: Palette.red),
+        ),
+        const SizedBox(width: 4),
         arrow(Icons.chevron_left, 'Previous week', -7),
         const SizedBox(width: 4),
         arrow(Icons.chevron_right, 'Next week', 7),

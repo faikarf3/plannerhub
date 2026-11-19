@@ -15,6 +15,7 @@ class FakeApi {
   FakeApi(this.routes);
   final Map<String, Object? Function(Map<String, dynamic>? body)> routes;
   final calls = <String>[];
+  final bodies = <String, Map<String, dynamic>?>{}; // last body sent to each route
 
   late final client = MockClient((req) async {
     final key = '${req.method} ${req.url.path}';
@@ -23,6 +24,7 @@ class FakeApi {
     final handler = routes[key];
     if (handler == null) return http.Response('{"message":"no route $key"}', 404);
     final body = req.body.isEmpty ? null : (jsonDecode(req.body) as Map).cast<String, dynamic>();
+    bodies[key] = body;
     return http.Response.bytes(utf8.encode(jsonEncode(handler(body))), 200,
         headers: {'content-type': 'application/json; charset=utf-8'});
   });

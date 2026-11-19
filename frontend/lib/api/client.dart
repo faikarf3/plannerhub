@@ -151,14 +151,27 @@ class ApiClient {
 
   // ---- repeating schedule
 
+  Future<ScheduleList> schedules() async => ScheduleList.fromJson(await _obj('GET', '/schedules'));
+
   Future<ActionResult> createSchedule({required int categoryId, String? job, required List<int> weekdays,
-          required String startTime, required String endTime, DateTime? startsOn, String? note}) =>
+          required String startTime, required String endTime, DateTime? startsOn, DateTime? until,
+          String? title, String? note}) =>
       _action('POST', '/schedules', {
         'category_id': categoryId, if (job != null) 'job': job, 'weekdays': weekdays,
         'start_time': startTime, 'end_time': endTime,
         if (startsOn != null) 'starts_on': _day(startsOn),
+        if (until != null) 'until': _day(until),
+        if (title != null && title.isNotEmpty) 'title': title,
         if (note != null && note.isNotEmpty) 'note': note,
       });
+
+  /// `fields` holds only what changed; a null value clears it (e.g. `until`).
+  Future<ActionResult> updateSchedule(int id, Map<String, Object?> fields) =>
+      _action('PATCH', '/schedules/$id', fields);
+
+  Future<ActionResult> deleteSchedule(int id) => _action('DELETE', '/schedules/$id');
+
+  static String day(DateTime d) => _day(d);
 
   String _occ(PlannedBlock b) => '/schedules/${b.scheduleId}/occurrences/${b.onDate}';
 

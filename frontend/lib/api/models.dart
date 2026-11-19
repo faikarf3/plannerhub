@@ -142,3 +142,42 @@ class TodayData {
   final List<TimeEntry> timeEntries;
   final List<PlannedBlock> plannedBlocks;
 }
+
+/// A repeating weekly block, as GET /schedules lists it.
+class ScheduleItem {
+  ScheduleItem.fromJson(Map<String, dynamic> j)
+      : id = j['id'] as int,
+        title = j['title'] as String?,
+        categoryId = j['category_id'] as int,
+        job = j['job'] as String?,
+        weekdays = (j['weekdays'] as List).cast<int>(),
+        startTime = j['start_time'] as String,
+        endTime = j['end_time'] as String,
+        until = j['until'] == null ? null : DateTime.parse(j['until'] as String),
+        label = j['label'] as String,
+        description = j['description'] as String,
+        isWork = j['is_work'] as bool,
+        minutesPerWeek = j['minutes_per_week'] as int,
+        active = j['active'] as bool;
+  final int id;
+  final String? title;
+  final int categoryId;
+  final String? job;
+  final List<int> weekdays; // 0 = Monday
+  final String startTime; // "15:00:00", New York wall clock
+  final String endTime; // earlier than start = ends the next day
+  final DateTime? until; // last day it can start on
+  final String label;
+  final String description; // "Tue, Thu 3:00pm–6:00pm"
+  final bool isWork;
+  final int minutesPerWeek;
+  final bool active;
+}
+
+class ScheduleList {
+  ScheduleList.fromJson(Map<String, dynamic> j)
+      : schedules = _list(j['schedules'], ScheduleItem.fromJson),
+        paidMinutesPerWeek = j['paid_minutes_per_week'] as int;
+  final List<ScheduleItem> schedules;
+  final int paidMinutesPerWeek;
+}
