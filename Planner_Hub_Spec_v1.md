@@ -180,7 +180,8 @@ Browsers may call the API from any `http://localhost` or `http://127.0.0.1` port
 | `GET /calendar?start=&end=` | Logged entries, planned blocks from repeats (planned, done; skipped on request) and one-off scheduled tasks for local days start..end; default this Monday to Sunday (built) |
 | `GET /projects` | One summary per project card: job search counts and items needing the user, last 3AM Facts run, SI checklist |
 | `GET /applications?status=`, `GET /content` | Project detail pages, read-only: pipelines write them through events (built) |
-| `GET, PATCH /si-sessions` | SI checklist |
+| `GET /si-sessions/current` | This week's SI plan (today if Monday, otherwise next Monday, New York): topic, the four checklist flags, `session_at`, `attendance`, and `prep_minutes_this_week` (SI prep logged in the 7 days before that Monday; a running prep timer counts to now). With nothing saved yet it returns the defaults with `"id": null` (built) |
+| `PATCH /si-sessions/{week_of}` | Create or update one week (`week_of` must be a Monday) with any subset of topic, `plan_form_done`, `slides_done`, `breakdown_done`, `answer_sheet_done`, `session_at`, `attendance`; undoable; returns the usual action reply (built) |
 | `POST /events` | Pipeline webhooks (3AM Facts, job tracker), authenticated with that pipeline's own key (built) |
 | `GET /events?source=` | Recent raw events, newest first (built) |
 | `GET, POST /pipeline-keys`, `DELETE /pipeline-keys/{id}` | Create a key for one pipeline (shown once), list keys by hint, revoke (built) |

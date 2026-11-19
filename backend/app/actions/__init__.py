@@ -1,6 +1,15 @@
 """Importing this package registers every action in REGISTRY."""
 
-from app.actions import categories, climbs, mood, pipelines, schedules, tasks, time_entries  # noqa: F401
+from app.actions import (  # noqa: F401
+    categories,
+    climbs,
+    mood,
+    pipelines,
+    schedules,
+    si,
+    tasks,
+    time_entries,
+)
 from app.actions.base import (
     REGISTRY,
     ActionContext,

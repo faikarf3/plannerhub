@@ -77,6 +77,20 @@ class ContentItemOut(_Orm):
     error: str | None
 
 
+class SiSessionOut(_Orm):
+    """One SI week. Also the undo snapshot for si_sessions rows."""
+
+    id: int | None  # None: no row saved for this week yet (all defaults)
+    week_of: date
+    topic: str | None
+    plan_form_done: bool
+    slides_done: bool
+    breakdown_done: bool
+    answer_sheet_done: bool
+    session_at: UtcDatetime | None
+    attendance: int | None
+
+
 class PipelineKeyOut(_Orm):
     id: int
     source: str

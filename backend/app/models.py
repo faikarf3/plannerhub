@@ -258,6 +258,29 @@ class ContentItem(Base):
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
 
 
+class SiSession(Base):
+    """One week of SI (PH201): the Monday session and its prep checklist.
+    Written only by update_si_session; a week with no row reads as all defaults."""
+
+    __tablename__ = "si_sessions"
+    __table_args__ = (
+        CheckConstraint("extract(isodow from week_of) = 1", name="week_of_monday"),
+        CheckConstraint("attendance IS NULL OR attendance >= 0", name="attendance_nonneg"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    week_of: Mapped[date] = mapped_column(unique=True)  # the session's Monday (New York)
+    topic: Mapped[str | None] = mapped_column(Text)
+    plan_form_done: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    slides_done: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    breakdown_done: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    answer_sheet_done: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    session_at: Mapped[datetime | None]
+    attendance: Mapped[int | None] = mapped_column(Integer)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+
+
 class ActionLog(Base):
     """Every change from any input. `inverse` is a list of steps that reverses it."""
 
