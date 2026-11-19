@@ -47,7 +47,11 @@ class Auth extends ChangeNotifier {
   Future<void> signInWithGoogle() async {
     rejection = null;
     final provider = GoogleAuthProvider()..setCustomParameters({'prompt': 'select_account'});
-    if (kIsWeb) {
+    if (kIsWeb && _mobileBrowser) {
+      // Pop-ups don't work in iOS home-screen web apps: go to Google and come back.
+      // The result arrives through authStateChanges after the page reloads.
+      await FirebaseAuth.instance.signInWithRedirect(provider);
+    } else if (kIsWeb) {
       await FirebaseAuth.instance.signInWithPopup(provider);
     } else {
       await FirebaseAuth.instance.signInWithProvider(provider);
@@ -55,4 +59,7 @@ class Auth extends ChangeNotifier {
   }
 
   Future<void> signOut() => FirebaseAuth.instance.signOut();
+
+  static bool get _mobileBrowser =>
+      defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.android;
 }

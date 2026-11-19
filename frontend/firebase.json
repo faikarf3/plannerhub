@@ -1,0 +1,12 @@
+{
+  "hosting": {
+    "site": "planner-hub-97a70d",
+    "public": "build/web",
+    "ignore": ["firebase.json", "**/.*"],
+    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "headers": [
+      { "source": "**/*.@(js|wasm|json|png|otf|ttf|woff2)", "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }] },
+      { "source": "/@(index.html|flutter_service_worker.js|flutter_bootstrap.js|version.json|manifest.json)", "headers": [{ "key": "Cache-Control", "value": "no-cache" }] }
+    ]
+  }
+}
