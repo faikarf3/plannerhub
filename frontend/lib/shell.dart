@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'calendar/calendar_screen.dart';
 import 'theme.dart';
 import 'today/today_screen.dart';
 
@@ -27,8 +28,9 @@ class _ShellState extends State<Shell> {
       body: SafeArea(
         bottom: false,
         child: IndexedStack(index: _tab, children: [
-          const TodayScreen(),
-          for (final t in _tabs.skip(1)) _ComingSoon(t.label),
+          TodayScreen(active: _tab == 0),
+          CalendarScreen(active: _tab == 1),
+          for (final t in _tabs.skip(2)) _ComingSoon(t.label),
         ]),
       ),
       bottomNavigationBar: SafeArea(

@@ -15,7 +15,8 @@ import '../widgets/common.dart';
 import 'log_bar.dart';
 
 class TodayScreen extends StatefulWidget {
-  const TodayScreen({super.key});
+  const TodayScreen({super.key, this.active = true});
+  final bool active; // reload when the tab is shown again (changes made on Calendar)
 
   @override
   State<TodayScreen> createState() => _TodayScreenState();
@@ -35,6 +36,12 @@ class _TodayScreenState extends State<TodayScreen> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void didUpdateWidget(TodayScreen old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !old.active) _load();
   }
 
   @override

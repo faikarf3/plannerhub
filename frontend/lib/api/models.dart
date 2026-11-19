@@ -23,12 +23,16 @@ class Task {
         title = j['title'] as String,
         categoryId = j['category_id'] as int,
         status = j['status'] as String,
-        dueAt = _time(j['due_at']);
+        dueAt = _time(j['due_at']),
+        scheduledStart = _time(j['scheduled_start']),
+        scheduledEnd = _time(j['scheduled_end']);
   final int id;
   final String title;
   final int categoryId;
   final String status;
   final DateTime? dueAt;
+  final DateTime? scheduledStart;
+  final DateTime? scheduledEnd;
 }
 
 class TimeEntry {
@@ -62,14 +66,33 @@ class PlannedBlock {
         endedAt = _time(j['ended_at'])!,
         label = j['label'] as String,
         isWork = j['is_work'] as bool,
-        status = j['status'] as String;
+        status = j['status'] as String,
+        categoryId = j['category_id'] as int? ?? 0,
+        job = j['job'] as String?,
+        moved = j['moved'] as bool? ?? false,
+        timeEntryId = j['time_entry_id'] as int?;
   final int scheduleId;
-  final String onDate;
+  final String onDate; // the local date it starts on, which names the occurrence
   final DateTime startedAt;
   final DateTime endedAt;
   final String label;
   final bool isWork;
-  final String status;
+  final String status; // planned, skipped, done
+  final int categoryId;
+  final String? job;
+  final bool moved;
+  final int? timeEntryId;
+}
+
+/// GET /calendar: one week of logged time, planned blocks and scheduled tasks.
+class CalendarData {
+  CalendarData.fromJson(Map<String, dynamic> j)
+      : entries = _list(j['entries'], TimeEntry.fromJson),
+        planned = _list(j['planned'], PlannedBlock.fromJson),
+        tasks = _list(j['tasks'], Task.fromJson);
+  final List<TimeEntry> entries;
+  final List<PlannedBlock> planned;
+  final List<Task> tasks;
 }
 
 /// One applied change (a line on a confirmation card).
