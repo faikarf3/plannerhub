@@ -29,7 +29,7 @@ class Settings(BaseSettings):
     # Deliberately not read from Neon's DATABASE_URL_UNPOOLED automatically, so a local
     # `alembic upgrade` can never hit Neon by accident -- use scripts/with-neon.sh.
     migration_database_url: str | None = None
-    # Single-user bearer token until the Flutter app moves auth to Firebase.
+    # Owner token: the Siri Shortcut and admin calls. Works alongside Firebase sign-in.
     api_token: str
     # Fallback extraction for text the quick-add parser can't read. Unset or empty
     # turns it off: unparsed text is then only saved to the journal.
@@ -41,6 +41,16 @@ class Settings(BaseSettings):
         r"http://(localhost|127\.0\.0\.1)(:\d+)?"
         r"|https://planner-hub-97a70d\.(web\.app|firebaseapp\.com)"
     )
+
+    # Firebase sign-in for the app: ID tokens must be for this project, and for a
+    # verified email in the allow-list (comma-separated; empty = nobody). The email
+    # lives in backend/.env or a Secret Manager secret, never in git.
+    firebase_project_id: str | None = "planner-hub-97a70d"
+    allowed_emails: str = ""
+
+    @property
+    def allowed_email_set(self) -> frozenset[str]:
+        return frozenset(e.strip().lower() for e in self.allowed_emails.split(",") if e.strip())
 
     @field_validator("database_url", "migration_database_url")
     @classmethod

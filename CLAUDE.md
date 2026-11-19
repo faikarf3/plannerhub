@@ -23,12 +23,13 @@ uv run alembic revision --autogenerate -m "..."  # new migration; review the gen
 
 Production DB is Neon (project `steep-surf-64403400`). `neon init` wrote its connection strings to the repo-root `.env.local` (gitignored; never print its values). Local dev stays on local Postgres because `PLANNER_DATABASE_URL` in `backend/.env` takes priority over Neon's `DATABASE_URL`. To act on Neon deliberately, prefix the command: `scripts/with-neon.sh uv run alembic upgrade head` (uses the direct, unpooled URL for migrations). Deployed, only `DATABASE_URL` is set.
 
-Deployed on Cloud Run: service `planner-api`, project `planner-hub-97a70d`, region `us-east4`, URL https://planner-api-885606868208.us-east4.run.app. Runs as service account `planner-api@planner-hub-97a70d.iam.gserviceaccount.com`, with secrets `planner-database-url` (Neon pooled URL), `planner-api-token` and `planner-gemini-api-key` from Secret Manager. Migrations are not run on boot; run them with `scripts/with-neon.sh` before deploying a schema change. Redeploy from the repo root:
+Deployed on Cloud Run: service `planner-api`, project `planner-hub-97a70d`, region `us-east4`, URL https://planner-api-885606868208.us-east4.run.app. Runs as service account `planner-api@planner-hub-97a70d.iam.gserviceaccount.com`, with secrets `planner-database-url` (Neon pooled URL), `planner-api-token`, `planner-gemini-api-key` and `planner-allowed-emails` (the Firebase sign-in allow-list) from Secret Manager. Migrations are not run on boot; run them with `scripts/with-neon.sh` before deploying a schema change. Redeploy from the repo root:
 
 ```bash
 gcloud run deploy planner-api --project planner-hub-97a70d --source backend --region us-east4 \
   --service-account planner-api@planner-hub-97a70d.iam.gserviceaccount.com \
-  --set-secrets DATABASE_URL=planner-database-url:latest,PLANNER_API_TOKEN=planner-api-token:latest,PLANNER_GEMINI_API_KEY=planner-gemini-api-key:latest \
+  --set-secrets DATABASE_URL=planner-database-url:latest,PLANNER_API_TOKEN=planner-api-token:latest,PLANNER_GEMINI_API_KEY=planner-gemini-api-key:latest,PLANNER_ALLOWED_EMAILS=planner-allowed-emails:latest \
+  --set-env-vars PLANNER_FIREBASE_PROJECT_ID=planner-hub-97a70d \
   --allow-unauthenticated --min-instances 0 --max-instances 2 --memory 512Mi
 ```
 
@@ -36,7 +37,7 @@ gcloud run deploy planner-api --project planner-hub-97a70d --source backend --re
 
 CORS: `CORSMiddleware` in `app/main.py` allows origins full-matching `PLANNER_CORS_ORIGIN_REGEX` (default: any http localhost/127.0.0.1 port, and the two Firebase Hosting domains for `planner-hub-97a70d`), with only the Authorization and Content-Type headers and no credentials.
 
-Tests run against real Postgres: each test is wrapped in an outer transaction that's rolled back, and the app's commits become savepoint releases (see `tests/conftest.py`). Auth is a single bearer token (`PLANNER_API_TOKEN`) on every route except `/health`; Firebase Auth replaces it when the app arrives.
+Tests run against real Postgres: each test is wrapped in an outer transaction that's rolled back, and the app's commits become savepoint releases (see `tests/conftest.py`). Auth (`app/auth.py`, `deps.require_token`): every route except `/health` and `POST /events` takes either the owner token (`PLANNER_API_TOKEN`, used by the Siri Shortcut and admin calls; checked first, so it never calls Google) or a Firebase ID token verified with google-auth (`verify_firebase_token`, audience and issuer = `PLANNER_FIREBASE_PROJECT_ID`) for a verified email in `PLANNER_ALLOWED_EMAILS` (comma-separated; empty = nobody). The user's email is never committed: it's in `backend/.env` locally and the `planner-allowed-emails` secret when deployed. Google's certs are cached via CacheControl. Tests never call Google: `conftest.py` makes `auth._verify_with_google` fail unless a test swaps in a fake. `GET /me` reports the caller.
 
 ## Backend layout
 

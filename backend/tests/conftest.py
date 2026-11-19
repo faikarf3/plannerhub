@@ -7,6 +7,9 @@ os.environ["PLANNER_API_TOKEN"] = "test-token"
 # Never call the real model from tests (backend/.env may hold a key); tests that
 # need extraction override get_extractor with a fake.
 os.environ["PLANNER_GEMINI_API_KEY"] = ""
+# Firebase sign-in: fixed project, nobody allowed unless a test says so.
+os.environ["PLANNER_FIREBASE_PROJECT_ID"] = "planner-hub-97a70d"
+os.environ["PLANNER_ALLOWED_EMAILS"] = ""
 
 import pytest  # noqa: E402
 from alembic import command  # noqa: E402
@@ -62,3 +65,12 @@ def client(session):
     with TestClient(app, headers={"Authorization": "Bearer test-token"}) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_google(monkeypatch):
+    """Tests never call Google; auth tests swap in a fake verifier."""
+    def refuse(*_):
+        raise AssertionError("a test tried to verify a Firebase token with Google")
+
+    monkeypatch.setattr("app.auth._verify_with_google", refuse)

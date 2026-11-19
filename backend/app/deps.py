@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.actions import ActionContext
 from app.actions.pipelines import hash_key
+from app.auth import OWNER, AuthError, Principal, firebase_principal, looks_like_jwt
 from app.config import get_settings
 from app.db import get_session
 from app.models import PipelineKey
@@ -42,9 +43,20 @@ def require_token(
     # Declared so /docs shows the Authorize button; the header is checked by hand
     # below to give a specific reason (these get debugged from a phone Shortcut).
     _creds: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
-) -> None:
-    if not _is_owner(_bearer_token(request)):
+) -> Principal:
+    """The owner token (Shortcut, admin) or a Firebase ID token (the app)."""
+    token = _bearer_token(request)
+    if _is_owner(token):
+        return OWNER
+    if not looks_like_jwt(token):
         raise _unauthorized("token doesn't match this server's token")
+    try:
+        return firebase_principal(token, get_settings())
+    except AuthError as e:
+        raise HTTPException(e.status_code, e.message) from e
+
+
+PrincipalDep = Annotated[Principal, Depends(require_token)]
 
 
 SessionDep = Annotated[Session, Depends(get_session)]

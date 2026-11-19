@@ -1,11 +1,13 @@
 from datetime import date
+from typing import Literal
 
 from fastapi import APIRouter
+from pydantic import BaseModel
 from sqlalchemy import select
 
 from app.actions import undo_action
 from app.actions.categories import CreateCategory
-from app.deps import CtxDep, SessionDep
+from app.deps import CtxDep, PrincipalDep, SessionDep
 from app.models import ActionLog, Category
 from app.queries import morning_digest, today_view
 from app.routers.common import run
@@ -23,6 +25,18 @@ def _log_out(entry: ActionLog) -> ActionLogOut:
         undoable=entry.inverse is not None and entry.undone_at is None,
         applied_at=entry.applied_at, undone_at=entry.undone_at,
     )
+
+
+class MeOut(BaseModel):
+    auth: Literal["owner", "firebase"]
+    email: str | None
+    uid: str | None
+
+
+@router.get("/me", tags=["auth"])
+def me(principal: PrincipalDep) -> MeOut:
+    """Who this request is signed in as: the owner token, or a Firebase account."""
+    return MeOut(auth=principal.kind, email=principal.email, uid=principal.uid)
 
 
 @router.get("/actions", tags=["actions"])

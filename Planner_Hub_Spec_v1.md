@@ -159,12 +159,13 @@ Rules:
 
 ## API endpoints
 
-FastAPI, JSON in and out; app clients authenticate with Firebase Auth, pipelines with a per-source API key.
+FastAPI, JSON in and out. Every request sends `Authorization: Bearer <token>`, where the token is one of: a Firebase ID token (the app; accepted only for a verified email on the `PLANNER_ALLOWED_EMAILS` list, for Firebase project `planner-hub-97a70d`), the owner token (Siri Shortcut and admin calls), or, on `POST /events` only, a pipeline's own key. A refusal is a 401 whose `message` says why (expired sign-in, different project, email not verified or not allowed…); a 503 means Google couldn't be reached to check a sign-in.
 
 Browsers may call the API from any `http://localhost` or `http://127.0.0.1` port (development) and from `https://planner-hub-97a70d.web.app` / `.firebaseapp.com` (Firebase Hosting); the list is the `PLANNER_CORS_ORIGIN_REGEX` setting. Auth is a bearer header, never cookies.
 
 | Method and path | Purpose |
 | --- | --- |
+| `GET /me` | Who the request is signed in as: `{"auth": "owner"|"firebase", "email", "uid"}` (built) |
 | `POST /voice` | Upload audio; returns transcript, applied actions, clarify questions |
 | `POST /log` | Typed text; quick-add parser first, Gemini as fallback; same response as /voice |
 | `POST /actions/{id}/undo` | Reverse one action from `action_log` |
