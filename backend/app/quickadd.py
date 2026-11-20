@@ -207,9 +207,12 @@ _DONE_TASK = re.compile(r"^(?:done|finished|did|completed?)\s+(?P<rest>.+)$")
 _STOP_WORD = r"(?:stop|stopped|stopping|done|end|ended|finish|finished)"
 _STOP = re.compile(rf"^{_STOP_WORD}(?:\s+(?:the\s+)?timer)?$")
 _STOP_ACTIVITY = re.compile(
-    rf"^{_STOP_WORD}(?:\s+with)?(?:\s+the)?\s+(?P<rest>.+?)(?:\s+timer)?$"
+    rf"^{_STOP_WORD}(?:\s+with)?(?:\s+the)?\s+(?P<rest>.+?)(?:\s+(?:time|timer))?$"
 )
-_START = re.compile(r"^(?:start|starting|started|begin)\s+(?:the\s+)?(?P<rest>.+)$")
+# A trailing "time"/"timer" is filler: "start si prep time" == "start si prep".
+_START = re.compile(
+    r"^(?:start|starting|started|begin)\s+(?:the\s+)?(?P<rest>.+?)(?:\s+(?:time|timer))?$"
+)
 _CLOCK_IN = re.compile(r"^(?:clock(?:ing|ed)?\s+in|clock-in)(?:\s+(?:for|to|at))?\s*(?P<rest>.*)$")
 _CLOCK_OUT = re.compile(r"^(?:clock(?:ing|ed)?\s+out|clock-out|off work|done with work)$")
 

@@ -84,8 +84,9 @@ JOB_LABELS: dict[str, str] = {
 ACTIVITIES: dict[str, tuple[str, str | None]] = {
     **{w: ("Climbing", None) for w in ("climb", "climbing", "climbed", "bouldering")},
     **{w: ("Work", "tutoring") for w in ("tutoring", "tutor", "tutored")},
-    **{w: ("Work", "si_session") for w in ("si", "si session", "si sessions")},
-    **{w: ("SI Prep", "si_prep") for w in ("si prep", "prep")},
+    # Plain "SI" is prep (most days); the Monday session must be named as such.
+    **{w: ("Work", "si_session") for w in ("si session", "si sessions", "si class")},
+    **{w: ("SI Prep", "si_prep") for w in ("si", "si prep", "prep")},
     **{w: ("Work", "restaurant") for w in ("restaurant", "restaurant shift")},
     **{w: ("Job Search", None)
        for w in ("job search", "applications", "applying", "apps", "jobs")},

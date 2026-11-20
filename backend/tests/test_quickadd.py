@@ -203,3 +203,29 @@ def test_not_understood(text):
 ])
 def test_stop_with_activity(text, expected):
     assert one(text) == ("stop_timer", expected)
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("start si", {"category": "SI Prep", "job": "si_prep"}),
+    ("start si prep time", {"category": "SI Prep", "job": "si_prep"}),
+    ("start the si prep timer", {"category": "SI Prep", "job": "si_prep"}),
+    ("start climbing time", {"category": "Climbing"}),
+    ("start si session", {"category": "Work", "job": "si_session"}),
+    ("start si class", {"category": "Work", "job": "si_session"}),
+])
+def test_start_si_and_filler_words(text, expected):
+    assert one(text) == ("start_timer", expected)
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("stop si", {"category": "SI Prep", "job": "si_prep"}),
+    ("stop si prep time", {"category": "SI Prep", "job": "si_prep"}),
+    ("stop si session", {"category": "Work", "job": "si_session"}),
+])
+def test_stop_si(text, expected):
+    assert one(text) == ("stop_timer", expected)
+
+
+def test_plain_si_log_is_prep():
+    kind, p = one("si 45m")
+    assert kind == "log_time" and p["job"] == "si_prep" and p["duration_min"] == 45

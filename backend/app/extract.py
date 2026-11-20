@@ -38,6 +38,8 @@ Rules:
   a place was named. To add a gym or notes to a climbing entry already in recent_entries or
   the running timer, call log_climb with its time_entry_id and no times.
 - "Clocking in/out", "off work" and named jobs are work time; set job to one of the listed jobs.
+- Plain "SI" means SI prep (job si_prep). Use si_session only when they say "SI session" or
+  the Monday session itself.
 - Use only category names from the list. If none fits, leave category out.
 - One statement can produce several actions; return all of them.
 - If something is ambiguous (which task, which time), call clarify alone instead of guessing.
