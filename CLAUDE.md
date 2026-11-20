@@ -30,8 +30,10 @@ gcloud run deploy planner-api --project planner-hub-97a70d --source backend --re
   --service-account planner-api@planner-hub-97a70d.iam.gserviceaccount.com \
   --set-secrets DATABASE_URL=planner-database-url:latest,PLANNER_API_TOKEN=planner-api-token:latest,PLANNER_GEMINI_API_KEY=planner-gemini-api-key:latest,PLANNER_ALLOWED_EMAILS=planner-allowed-emails:latest \
   --set-env-vars PLANNER_FIREBASE_PROJECT_ID=planner-hub-97a70d \
-  --allow-unauthenticated --min-instances 0 --max-instances 2 --memory 512Mi
+  --allow-unauthenticated --min-instances 0 --max-instances 2 --memory 512Mi --cpu-boost
 ```
+
+Keep-warm: a cold start takes ~8s, longer than Siri waits for the Shortcut. Cloud Scheduler job `planner-keep-warm` (us-east4) GETs `/health` every 10 minutes from 7am to midnight New York, so the server doesn't go cold while the user is awake (`/health` doesn't touch Neon, which still sleeps). With min-instances 0 and request-based billing this stays free; `--cpu-boost` speeds up the cold starts that remain.
 
 `--allow-unauthenticated` only makes the URL reachable; every route but `/health` still requires the bearer token. A $1/month budget alert is set on billing account "Main".
 
